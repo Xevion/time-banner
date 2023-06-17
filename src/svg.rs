@@ -27,6 +27,7 @@ pub fn get() -> Result<Vec<u8>, RenderError> {
 
         let mut fontdb = fontdb::Database::new();
         fontdb.load_system_fonts();
+        fontdb.load_fonts_dir("./fonts");
 
         let svg_data = include_bytes!("../test.svg");
 

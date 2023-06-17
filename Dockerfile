@@ -30,6 +30,7 @@ RUN groupadd $APP_USER \
     && mkdir -p ${APP}
 
 COPY --from=builder /time-banner/target/release/time-banner ${APP}/time-banner
+COPY --from=builder /time-banner/src/fonts ${APP}/fonts
 
 RUN chown -R $APP_USER:$APP_USER ${APP}
 
