@@ -1,3 +1,5 @@
+mod config;
+
 use std::net::SocketAddr;
 
 use axum::{http::StatusCode, Json, response::IntoResponse, Router, routing::{get, post}};
@@ -5,21 +7,33 @@ use axum::body::{Bytes, Full};
 use axum::extract::ConnectInfo;
 use axum::http::header;
 use axum::response::Response;
+use dotenvy::dotenv;
+use config::Configuration;
 
 mod svg;
 
+
 #[tokio::main]
 async fn main() {
-    // initialize tracing
-    tracing_subscriber::fmt::init();
+    // Parse dotenv files and expose them as environment variables
+    dotenv().ok();
 
-    let app = Router::new()
-        .route("/", get(root));
+    // envy uses our Configuration struct to parse environment variables
+    let config = envy::from_env::<Configuration>().expect("Please provide PORT env var");
+
+    // initialize tracing
+    tracing_subscriber::fmt()
+        // With the log_level from our config
+        .with_max_level(config.log_level())
+        .init();
+
+    // build our application with a route
+    let app = Router::new().route("/", get(root_handler));
 
     // run our app with hyper
     // `axum::Server` is a re-export of `hyper::Server`
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-    tracing::debug!("listening on {}", addr);
+    let addr = SocketAddr::from((config.socket_addr(), config.port));
+
     axum::Server::bind(&addr)
         .serve(app.into_make_service_with_connect_info::<SocketAddr>())
         .await
@@ -27,7 +41,7 @@ async fn main() {
 }
 
 // basic handler that responds with a static string
-async fn root(connect_info: ConnectInfo<SocketAddr>) -> impl IntoResponse {
+async fn root_handler(connect_info: ConnectInfo<SocketAddr>) -> impl IntoResponse {
     let raw_image = svg::get();
 
     if raw_image.is_err() {

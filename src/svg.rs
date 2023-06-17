@@ -29,8 +29,6 @@ pub fn get() -> Result<Vec<u8>, RenderError> {
         fontdb.load_system_fonts();
 
         let svg_data = std::fs::read("test.svg").unwrap();
-        // print bytes as string
-        println!("{:?}", String::from_utf8(svg_data.clone()).unwrap());
 
         let mut tree_result = usvg::Tree::from_data(&svg_data, &opt);
         if tree_result.is_err() { return Err(RenderError { message: Some("Failed to parse".to_string()) }); }
