@@ -11,7 +11,7 @@ RUN cargo build --release
 # Build web app with own code
 RUN rm src/*.rs
 ADD . ./
-RUN rm ./target/release/deps/time-banner*
+RUN rm ./target/release/deps/time_banner*
 RUN cargo build --release
 
 
