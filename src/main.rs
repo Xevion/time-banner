@@ -2,15 +2,30 @@ mod config;
 
 use std::net::SocketAddr;
 
-use axum::{http::StatusCode, Json, response::IntoResponse, Router, routing::{get, post}};
-use axum::body::{Bytes, Full};
+use axum::{http::StatusCode, response::IntoResponse, Router, routing::{get}};
+use axum::body::{Full};
 use axum::extract::ConnectInfo;
 use axum::http::header;
 use axum::response::Response;
 use dotenvy::dotenv;
+use lazy_static::lazy_static;
 use config::Configuration;
+use tera::{Tera, Context};
 
 mod svg;
+
+lazy_static! {
+    pub static ref TEMPLATES: Tera = {
+        let mut _tera = match Tera::new("./src/templates/**/*.svg") {
+            Ok(t) => t,
+            Err(e) => {
+                println!("Parsing error(s): {}", e);
+                ::std::process::exit(1);
+            }
+        };
+        _tera
+    };
+}
 
 
 #[tokio::main]
@@ -41,10 +56,25 @@ async fn main() {
 }
 
 // basic handler that responds with a static string
-async fn root_handler(connect_info: ConnectInfo<SocketAddr>) -> impl IntoResponse {
+async fn root_handler(_connect_info: ConnectInfo<SocketAddr>) -> impl IntoResponse {
     let renderer = svg::Renderer::new();
-    let data = include_bytes!("./templates/basic.svg");
-    let raw_image = renderer.render(data);
+
+    TEMPLATES.get_template_names().into_iter().for_each(|x| println!("{}", x));
+
+    let mut context = Context::new();
+    context.insert("text", &_connect_info.ip());
+    let data = TEMPLATES.render("basic.svg", &context);
+
+    if data.is_err() {
+        return Response::builder()
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
+            .body(Full::from(
+                format!("Template Could Not Be Rendered :: {}", data.err().unwrap())
+            ))
+            .unwrap();
+    }
+
+    let raw_image = renderer.render(data.unwrap().into_bytes());
 
     if raw_image.is_err() {
         return Response::builder()

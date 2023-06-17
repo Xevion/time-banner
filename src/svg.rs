@@ -1,4 +1,3 @@
-use png::EncodingError;
 use resvg::{tiny_skia, usvg};
 use resvg::usvg::{fontdb, TreeParsing, TreeTextToPath};
 
@@ -32,10 +31,10 @@ impl Renderer {
         }
     }
 
-    pub fn render(&self, svg_data: &[u8]) -> Result<Vec<u8>, RenderError> {
+    pub fn render(&self, svg_data: Vec<u8>) -> Result<Vec<u8>, RenderError> {
         let tree = {
-            let mut opt = usvg::Options::default();
-            let mut tree_result = usvg::Tree::from_data(svg_data, &opt);
+            let opt = usvg::Options::default();
+            let mut tree_result = usvg::Tree::from_data(&*svg_data, &opt);
             if tree_result.is_err() { return Err(RenderError { message: Some("Failed to parse".to_string()) }); }
 
             let tree = tree_result.as_mut().unwrap();
