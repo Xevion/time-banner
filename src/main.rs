@@ -5,7 +5,7 @@ use std::net::SocketAddr;
 use axum::{http::StatusCode, response::IntoResponse, Router, routing::{get}};
 use axum::body::{Full};
 use axum::extract::ConnectInfo;
-use axum::http::header;
+use axum::http::{header, HeaderMap};
 use axum::response::Response;
 use dotenvy::dotenv;
 use lazy_static::lazy_static;
@@ -55,11 +55,18 @@ async fn main() {
 }
 
 // basic handler that responds with a static string
-async fn root_handler(_connect_info: ConnectInfo<SocketAddr>) -> impl IntoResponse {
+async fn root_handler(connect_info: ConnectInfo<SocketAddr>, headers: HeaderMap) -> impl IntoResponse {
     let renderer = svg::Renderer::new();
 
     let mut context = Context::new();
-    context.insert("text", &_connect_info.ip());
+
+    let mut ip_repr: Option<String> = headers.get("X-Forwarded-For").and_then(|hv| Some(String::from(hv.to_str().unwrap())));
+    if ip_repr.is_none() {
+        let connect_ip = connect_info.ip().to_string();
+        ip_repr = Some(connect_ip.to_string());
+    }
+
+    context.insert("text", &ip_repr.unwrap());
     let data = TEMPLATES.render("basic.svg", &context);
 
     if data.is_err() {
