@@ -8,6 +8,7 @@ pub enum Environment {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "lowercase")]
 pub struct Configuration {
     #[serde(default = "default_env")]
     pub env: Environment,
