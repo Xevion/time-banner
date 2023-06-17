@@ -17,33 +17,39 @@ impl std::fmt::Display for RenderError {
     }
 }
 
-pub fn get() -> Result<Vec<u8>, RenderError> {
-    let rtree = {
-        let mut opt = usvg::Options::default();
-        // Get file's absolute directory.
-        opt.resources_dir = std::fs::canonicalize("")
-            .ok()
-            .and_then(|p| p.parent().map(|p| p.to_path_buf()));
+pub struct Renderer {
+    font_db: fontdb::Database,
+}
 
+impl Renderer {
+    pub fn new() -> Self {
         let mut fontdb = fontdb::Database::new();
         fontdb.load_system_fonts();
         fontdb.load_fonts_dir("./fonts");
 
-        let svg_data = include_bytes!("../test.svg");
+        Self {
+            font_db: fontdb
+        }
+    }
 
-        let mut tree_result = usvg::Tree::from_data(svg_data, &opt);
-        if tree_result.is_err() { return Err(RenderError { message: Some("Failed to parse".to_string()) }); }
+    pub fn render(&self, svg_data: &[u8]) -> Result<Vec<u8>, RenderError> {
+        let tree = {
+            let mut opt = usvg::Options::default();
+            let mut tree_result = usvg::Tree::from_data(svg_data, &opt);
+            if tree_result.is_err() { return Err(RenderError { message: Some("Failed to parse".to_string()) }); }
 
+            let tree = tree_result.as_mut().unwrap();
+            tree.convert_text(&self.font_db);
 
-        let tree = tree_result.as_mut().unwrap();
-        tree.convert_text(&fontdb);
+            resvg::Tree::from_usvg(&tree)
+        };
 
-        resvg::Tree::from_usvg(&tree)
-    };
+        let pixmap_size = tree.size.to_int_size();
+        let mut pixmap = tiny_skia::Pixmap::new(pixmap_size.width(), pixmap_size.height()).unwrap();
+        tree.render(tiny_skia::Transform::default(), &mut pixmap.as_mut());
 
-    let pixmap_size = rtree.size.to_int_size();
-    let mut pixmap = tiny_skia::Pixmap::new(pixmap_size.width(), pixmap_size.height()).unwrap();
-    rtree.render(tiny_skia::Transform::default(), &mut pixmap.as_mut());
-
-    pixmap.encode_png().map_err(|_| RenderError { message: Some("Failed to encode".to_string()) })
+        pixmap
+            .encode_png()
+            .map_err(|_| RenderError { message: Some("Failed to encode".to_string()) })
+    }
 }

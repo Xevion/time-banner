@@ -42,7 +42,9 @@ async fn main() {
 
 // basic handler that responds with a static string
 async fn root_handler(connect_info: ConnectInfo<SocketAddr>) -> impl IntoResponse {
-    let raw_image = svg::get();
+    let renderer = svg::Renderer::new();
+    let data = include_bytes!("./templates/basic.svg");
+    let raw_image = renderer.render(data);
 
     if raw_image.is_err() {
         return Response::builder()
