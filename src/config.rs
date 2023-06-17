@@ -2,13 +2,13 @@ use serde::Deserialize;
 use tracing::Level;
 
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "lowercase")]
 pub enum Environment {
     Production,
     Development,
 }
 
 #[derive(Deserialize, Debug)]
-#[serde(rename_all = "lowercase")]
 pub struct Configuration {
     #[serde(default = "default_env")]
     pub env: Environment,
