@@ -16,8 +16,12 @@ mod svg;
 
 lazy_static! {
     pub static ref TEMPLATES: Tera = {
-        let mut _tera = match Tera::new("./src/templates/**/*.svg") {
-            Ok(t) => t,
+        let mut _tera = match Tera::new("templates/**/*.svg") {
+            Ok(t) => {
+                let names: Vec<&str> = t.get_template_names().collect();
+                println!("{} templates found ([{}]).", names.len(), names.join(", "));
+                t
+            },
             Err(e) => {
                 println!("Parsing error(s): {}", e);
                 ::std::process::exit(1);
@@ -42,13 +46,8 @@ async fn main() {
         .with_max_level(config.log_level())
         .init();
 
-    // build our application with a route
     let app = Router::new().route("/", get(root_handler));
-
-    // run our app with hyper
-    // `axum::Server` is a re-export of `hyper::Server`
     let addr = SocketAddr::from((config.socket_addr(), config.port));
-
     axum::Server::bind(&addr)
         .serve(app.into_make_service_with_connect_info::<SocketAddr>())
         .await
