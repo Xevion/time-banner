@@ -59,8 +59,6 @@ async fn main() {
 async fn root_handler(_connect_info: ConnectInfo<SocketAddr>) -> impl IntoResponse {
     let renderer = svg::Renderer::new();
 
-    TEMPLATES.get_template_names().into_iter().for_each(|x| println!("{}", x));
-
     let mut context = Context::new();
     context.insert("text", &_connect_info.ip());
     let data = TEMPLATES.render("basic.svg", &context);

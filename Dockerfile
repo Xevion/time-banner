@@ -31,6 +31,7 @@ RUN groupadd $APP_USER \
 
 COPY --from=builder /time-banner/target/release/time-banner ${APP}/time-banner
 COPY --from=builder /time-banner/src/fonts ${APP}/fonts
+COPY --from=builder /time-banner/src/templates ${APP}/templates
 
 RUN chown -R $APP_USER:$APP_USER ${APP}
 
