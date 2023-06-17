@@ -1,3 +1,6 @@
-<svg width="256" height="32" xmlns="http://www.w3.org/2000/svg" font-family="Arial" font-size="28">
-    <text x="10" y="28">{{ text }}</text>
+<svg width="{{ width }}" height="{{ height }}" xmlns="http://www.w3.org/2000/svg" font-family="Roboto Mono" font-size="27">
+    <text x="8" y="27">{{ text }}</text>
+    <style>
+        text
+    </style>
 </svg>
