@@ -51,11 +51,15 @@ pub async fn implicit_handler(Path(path): Path<String>) -> impl IntoResponse {
     // Parse epoch
     let parsed_epoch = raw_time.parse::<i64>();
     if parsed_epoch.is_err() {
-        return (StatusCode::BAD_REQUEST, Full::from(format!("Failed to parse epoch :: {}", parsed_epoch.unwrap_err()))).into_response();
+        return get_error_response(TimeBannerError::ParseError("Input could not be parsed into integer.".to_string())).into_response();
     }
 
     // Convert epoch to DateTime
     let naive_time = NaiveDateTime::from_timestamp_opt(parsed_epoch.unwrap(), 0);
+    if naive_time.is_none() {
+        return get_error_response(TimeBannerError::ParseError("Input was not a valid DateTime".to_string())).into_response();
+    }
+
     let utc_time = DateTime::<Utc>::from_utc(naive_time.unwrap(), Utc);
 
     // Build context for rendering
@@ -75,7 +79,7 @@ pub async fn implicit_handler(Path(path): Path<String>) -> impl IntoResponse {
             .body(Full::from(
                 format!("Template Could Not Be Rendered :: {}", rendered_template.err().unwrap())
             ))
-            .unwrap();
+            .unwrap().into_response();
     }
 
     let rasterize_result = handle_rasterize(rendered_template.unwrap(), extension);

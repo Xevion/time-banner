@@ -1,6 +1,8 @@
 use axum::body::Full;
 use axum::http::{StatusCode};
+use axum::Json;
 use axum::response::{IntoResponse, Response};
+use serde::{Serialize, Deserialize};
 
 pub enum TimeBannerError {
     ParseError(String),
@@ -8,10 +10,18 @@ pub enum TimeBannerError {
     RasterizeError(String),
 }
 
-pub fn get_error_response(error: TimeBannerError) -> (StatusCode, Full<String>) {
-    match error {
-        TimeBannerError::RenderError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, Full::from(format!("Template Could Not Be Rendered :: {}", msg))),
-        TimeBannerError::ParseError(msg) => (StatusCode::BAD_REQUEST, Full::from(format!("Failed to parse epoch :: {}", msg))),
-        TimeBannerError::RasterizeError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, Full::from(format!("Failed to rasterize :: {}", msg)))
-    }
+#[derive(Serialize, Deserialize)]
+pub struct ErrorResponse {
+    code: u16,
+    message: String,
+}
+
+pub fn get_error_response(error: TimeBannerError) -> (StatusCode, Json<ErrorResponse>) {
+    let (code, message) = match error {
+        TimeBannerError::RenderError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, format!("RenderError :: {}", msg)),
+        TimeBannerError::ParseError(msg) => (StatusCode::BAD_REQUEST, format!("ParserError :: {}", msg)),
+        TimeBannerError::RasterizeError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, format!("RasertizeError :: {}", msg))
+    };
+
+    (code, Json(ErrorResponse { code: code.as_u16(), message }))
 }
