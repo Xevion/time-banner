@@ -16,11 +16,11 @@ impl std::fmt::Display for RenderError {
     }
 }
 
-pub struct Renderer {
+pub struct Rasterizer {
     font_db: fontdb::Database,
 }
 
-impl Renderer {
+impl Rasterizer {
     pub fn new() -> Self {
         let mut fontdb = fontdb::Database::new();
         fontdb.load_system_fonts();

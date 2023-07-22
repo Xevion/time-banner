@@ -3,12 +3,14 @@ use std::net::SocketAddr;
 use axum::{Router, routing::get};
 use dotenvy::dotenv;
 use config::Configuration;
-use crate::routes::root_handler;
+use crate::routes::{relative_handler, implicit_handler, absolute_handler};
 
 mod config;
-mod svg;
+mod raster;
 mod abbr;
 mod routes;
+mod parse;
+mod template;
 
 
 #[tokio::main]
@@ -26,7 +28,12 @@ async fn main() {
         .init();
 
     let app = Router::new()
-        .route("/:path", get(root_handler));
+        .route("/:path", get(implicit_handler))
+        .route("/rel/:path", get(relative_handler))
+        .route("/relative/:path", get(relative_handler))
+        .route("/absolute/:path", get(absolute_handler))
+        .route("/abs/:path", get(absolute_handler));
+
     let addr = SocketAddr::from((config.socket_addr(), config.port));
     axum::Server::bind(&addr)
         .serve(app.into_make_service_with_connect_info::<SocketAddr>())
