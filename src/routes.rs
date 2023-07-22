@@ -2,7 +2,7 @@ use axum::{http::StatusCode, response::IntoResponse};
 use axum::body::{Bytes, Full};
 use axum::extract::{Path};
 use axum::http::{header};
-use axum::response::Response;
+use axum::response::{Redirect, Response};
 use chrono::{DateTime, NaiveDateTime, Offset, Utc};
 use crate::error::{get_error_response, TimeBannerError};
 
@@ -32,6 +32,11 @@ fn handle_rasterize(data: String, extension: &str) -> Result<(&str, Bytes), Time
         }
         _ => Err(TimeBannerError::RasterizeError(format!("Unsupported extension: {}", extension)))
     }
+}
+
+pub async fn index_handler() -> impl IntoResponse {
+    let epoch_now = Utc::now().timestamp();
+    return Redirect::temporary(&*format!("/relative/{epoch_now}")).into_response();
 }
 
 pub async fn relative_handler(Path(path): Path<String>) -> impl IntoResponse {

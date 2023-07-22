@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use axum::{Router, routing::get};
 use dotenvy::dotenv;
 use config::Configuration;
-use crate::routes::{relative_handler, implicit_handler, absolute_handler};
+use crate::routes::{relative_handler, implicit_handler, absolute_handler, index_handler};
 
 mod config;
 mod raster;
@@ -29,6 +29,7 @@ async fn main() {
         .init();
 
     let app = Router::new()
+        .route("/", get(index_handler))
         .route("/:path", get(implicit_handler))
         .route("/rel/:path", get(relative_handler))
         .route("/relative/:path", get(relative_handler))
