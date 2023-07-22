@@ -3,7 +3,6 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
 use regex::Regex;
-use chrono::{FixedOffset};
 use lazy_static::lazy_static;
 
 lazy_static! {

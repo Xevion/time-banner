@@ -1,20 +1,22 @@
-mod config;
-
 use std::net::SocketAddr;
 use std::time::SystemTime;
 
-use axum::{http::StatusCode, response::IntoResponse, Router, routing::{get}};
-use axum::body::{Full};
-use axum::extract::{ConnectInfo, Path};
-use axum::http::{header, HeaderMap};
+use axum::{http::StatusCode, response::IntoResponse, Router, routing::get};
+use axum::body::Full;
+use axum::extract::{Path};
+use axum::http::{header};
 use axum::response::Response;
 use dotenvy::dotenv;
 use lazy_static::lazy_static;
-use config::Configuration;
-use tera::{Tera, Context};
+use tera::{Context, Tera};
 use timeago::Formatter;
 
+use config::Configuration;
+
+mod config;
+
 mod svg;
+mod abbr;
 
 lazy_static! {
     pub static ref TEMPLATES: Tera = {
