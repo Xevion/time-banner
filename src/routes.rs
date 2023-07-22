@@ -1,13 +1,10 @@
-use std::io::Read;
-use std::process::Output;
-use std::time::SystemTime;
-
 use axum::{http::StatusCode, response::IntoResponse};
 use axum::body::{Bytes, Full};
 use axum::extract::{Path};
 use axum::http::{header};
 use axum::response::Response;
-use chrono::{DateTime, FixedOffset, NaiveDateTime, Offset, Utc};
+use chrono::{DateTime, NaiveDateTime, Offset, Utc};
+use crate::error::{get_error_response, TimeBannerError};
 
 
 use crate::parse::split_on_extension;
@@ -19,12 +16,6 @@ fn parse_path(path: &str) -> (&str, &str) {
     split_on_extension(path)
         .or_else(|| Some((path, "svg")))
         .unwrap()
-}
-
-enum TimeBannerError {
-    ParseError(String),
-    RenderError(String),
-    RasterizeError(String),
 }
 
 fn handle_rasterize(data: String, extension: &str) -> Result<(&str, Bytes), TimeBannerError> {
@@ -60,10 +51,7 @@ pub async fn implicit_handler(Path(path): Path<String>) -> impl IntoResponse {
     // Parse epoch
     let parsed_epoch = raw_time.parse::<i64>();
     if parsed_epoch.is_err() {
-        return Response::builder()
-            .status(StatusCode::BAD_REQUEST)
-            .body(Full::from(format!("Failed to parse epoch :: {}", parsed_epoch.unwrap_err())))
-            .unwrap();
+        return (StatusCode::BAD_REQUEST, Full::from(format!("Failed to parse epoch :: {}", parsed_epoch.unwrap_err()))).into_response();
     }
 
     // Convert epoch to DateTime
@@ -93,27 +81,8 @@ pub async fn implicit_handler(Path(path): Path<String>) -> impl IntoResponse {
     let rasterize_result = handle_rasterize(rendered_template.unwrap(), extension);
     match rasterize_result {
         Ok((mime_type, bytes)) => {
-            Response::builder()
-                .status(StatusCode::OK)
-                .header(header::CONTENT_TYPE, mime_type)
-                .body(Full::from(bytes))
-                .unwrap()
+            (StatusCode::OK, [(header::CONTENT_TYPE, mime_type)], bytes).into_response()
         }
-        Err(e) => {
-            match e {
-                TimeBannerError::RenderError(msg) => Response::builder()
-                    .status(StatusCode::INTERNAL_SERVER_ERROR)
-                    .body(Full::from(format!("Template Could Not Be Rendered :: {}", msg)))
-                    .unwrap(),
-                TimeBannerError::ParseError(msg) => Response::builder()
-                    .status(StatusCode::BAD_REQUEST)
-                    .body(Full::from(format!("Failed to parse epoch :: {}", msg)))
-                    .unwrap(),
-                TimeBannerError::RasterizeError(msg) => Response::builder()
-                    .status(StatusCode::INTERNAL_SERVER_ERROR)
-                    .body(Full::from(format!("Failed to rasterize :: {}", msg)))
-                    .unwrap(),
-            }
-        }
+        Err(e) => get_error_response(e).into_response()
     }
 }

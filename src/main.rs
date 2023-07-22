@@ -11,6 +11,7 @@ mod abbr;
 mod routes;
 mod parse;
 mod template;
+mod error;
 
 
 #[tokio::main]
