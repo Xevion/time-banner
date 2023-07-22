@@ -43,6 +43,10 @@ pub async fn relative_handler(Path(path): Path<String>) -> impl IntoResponse {
     let (raw_time, extension) = parse_path(path.as_str());
 }
 
+pub async fn fallback_handler() -> impl IntoResponse {
+    return get_error_response(TimeBannerError::NotFound).into_response();
+}
+
 pub async fn absolute_handler(Path(path): Path<String>) -> impl IntoResponse {
     let (raw_time, extension) = parse_path(path.as_str());
 }

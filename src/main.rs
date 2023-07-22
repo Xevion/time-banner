@@ -1,9 +1,11 @@
 use std::net::SocketAddr;
 
 use axum::{Router, routing::get};
+use axum::response::IntoResponse;
 use dotenvy::dotenv;
 use config::Configuration;
-use crate::routes::{relative_handler, implicit_handler, absolute_handler, index_handler};
+use crate::error::{get_error_response, TimeBannerError};
+use crate::routes::{relative_handler, implicit_handler, absolute_handler, index_handler, fallback_handler};
 
 mod config;
 mod raster;
@@ -34,7 +36,8 @@ async fn main() {
         .route("/rel/:path", get(relative_handler))
         .route("/relative/:path", get(relative_handler))
         .route("/absolute/:path", get(absolute_handler))
-        .route("/abs/:path", get(absolute_handler));
+        .route("/abs/:path", get(absolute_handler))
+        .fallback(fallback_handler);
 
     let addr = SocketAddr::from((config.socket_addr(), config.port));
     axum::Server::bind(&addr)
