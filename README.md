@@ -11,7 +11,7 @@ My first Rust project, intended to offer a simple way to display the current tim
 - Dynamic Formats
 - Caching Abilities
     - Relative caching for up to 59 seconds, purged on the minute
-    - Absolute caching for up to 50MB, purged on a LRU basis
+    - Absolute caching for up to 50MB, purged on an LRU basis
 - Flexible & Dynamic Browser API
     - Allow users to play with format in numerous ways to query API
     - Examples
@@ -19,6 +19,21 @@ My first Rust project, intended to offer a simple way to display the current tim
         - `2023-06-14-3PM-CST.svg`
         - `/jpeg/2023.06.14.33` (14th of June, 2023, 2:33 PM UTC)
         - `/jpeg/2023.06.14.33T-5` (14th of June, 2023, 2:33 PM UTC-5)
+
+## Routes
+
+```shell
+/{time}[.{ext}]
+/{rel|relative}/{time}[.{ext}]
+/{abs|absolute}/{time}[.{ext}]
+```
+
+- If relative or absolute is not specified, it will be the opposite of the time string's format.
+
+### Query Parameters
+
+- `format` - Specify the format of the time string
+- `tz` - Specify the timezone of the time string. May be ignored if the time string contains a timezone/offset.
 
 ## Structure
 
@@ -37,9 +52,10 @@ My first Rust project, intended to offer a simple way to display the current tim
 
 ## Input Parsing
 
-- Separators can be any of the following: `.`, `,`, `-`, `:` and ` `.
-    - They must be consistent through the date section and the time section (they can be different between the two).
-- Date order can be modified with `?date=[YMD|DMY|MDY]`. By default, it is `YMD`.
+- Date formatting will be guesswork, but can be specified with `?format=` parameter.
+    - To avoid abuse, it will be limited to a subset of the `chrono` formatting options.
+- The assumed extension when not specified is `.svg` for performance sake.
+    - `.png` is also available. `.jpeg` and `.webp` are planned.
 - Time is not required, but will default each value to 0 (except HOUR, which is the minimum specified value).
 - Millisecond precision is allowed, but will be ignored in most outputs. Periods or commas are allowed as separators.
 - Timezones can be qualified in a number of ways, but will default to UTC if not specified.
@@ -50,17 +66,3 @@ My first Rust project, intended to offer a simple way to display the current tim
         - Full table available in [`abbr_tz`](./src/abbr_tz). Comments designated with `#`. Preferred interpretation
           designated arbitrarily by me. Table sourced
           from [Wikipedia](https://en.wikipedia.org/wiki/List_of_time_zone_abbreviations)
-
-```shell
-2023-06-14-3  # 3AM UTC
-2023-06-14-3-45  # 3:45AM UTC
-2023-06-14-3PM-CST
-2023.06.14.15-CST  # 3PM CST
-2023.06.14.15-45-CST  # 3:45PM CST
-2023.06.14.15-45-30-CST  # 3:45:30PM CST
-2023.06.14.15-45-30.123-CST  # 3:45:30.123PM CST
-2023.06.14.15-45-30,123-CST  # 3:45:30.123PM CST
-```
-
-## Output Formats
-
