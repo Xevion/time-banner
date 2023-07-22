@@ -30,7 +30,7 @@ fn handle_rasterize(data: String, extension: &str) -> Result<(&str, Bytes), Time
 
             Ok(("image/x-png", Bytes::from(raw_image.unwrap())))
         }
-        _ => Err(TimeBannerError::ParseError(format!("Unsupported extension: {}", extension)))
+        _ => Err(TimeBannerError::RasterizeError(format!("Unsupported extension: {}", extension)))
     }
 }
 
