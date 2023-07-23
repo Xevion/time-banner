@@ -1,10 +1,8 @@
 use std::net::SocketAddr;
 
 use axum::{Router, routing::get};
-use axum::response::IntoResponse;
 use dotenvy::dotenv;
 use config::Configuration;
-use crate::error::{get_error_response, TimeBannerError};
 use crate::routes::{relative_handler, implicit_handler, absolute_handler, index_handler, fallback_handler};
 
 mod config;
@@ -14,6 +12,7 @@ mod routes;
 mod parse;
 mod template;
 mod error;
+mod relative;
 
 
 #[tokio::main]
