@@ -1,5 +1,5 @@
 # Build Stage
-FROM rust:1.68.0 as builder
+FROM rust:1.81.0 as builder
 
 RUN USER=root cargo new --bin time-banner
 WORKDIR ./time-banner
