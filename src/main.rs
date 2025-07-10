@@ -4,7 +4,7 @@ use crate::routes::{
     absolute_handler, fallback_handler, favicon_handler, implicit_handler, index_handler,
     relative_handler,
 };
-use axum::{routing::get, Router};
+use axum::{http::HeaderValue, response::Response, routing::get, Router};
 use config::Configuration;
 use dotenvy::dotenv;
 
@@ -41,7 +41,8 @@ async fn main() {
         .route("/relative/{path}", get(relative_handler))
         .route("/absolute/{path}", get(absolute_handler))
         .route("/abs/{path}", get(absolute_handler))
-        .fallback(fallback_handler);
+        .fallback(fallback_handler)
+        .layer(axum::middleware::map_response(add_server_header));
 
     let addr = SocketAddr::from((config.socket_addr(), config.port));
     axum::serve(
@@ -50,4 +51,16 @@ async fn main() {
     )
     .await
     .unwrap();
+}
+
+/// Middleware to add server header with application version
+async fn add_server_header(mut response: Response) -> Response {
+    let version = env!("CARGO_PKG_VERSION");
+    let server_header = format!("time-banner/{}", version);
+
+    if let Ok(header_value) = HeaderValue::from_str(&server_header) {
+        response.headers_mut().insert("Server", header_value);
+    }
+
+    response
 }
