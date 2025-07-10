@@ -1,5 +1,5 @@
-use resvg::{tiny_skia, usvg};
 use resvg::usvg::{fontdb, TreeParsing, TreeTextToPath};
+use resvg::{tiny_skia, usvg};
 
 #[derive(Debug, Clone)]
 pub struct RenderError {
@@ -26,16 +26,18 @@ impl Rasterizer {
         fontdb.load_system_fonts();
         fontdb.load_fonts_dir("./fonts");
 
-        Self {
-            font_db: fontdb
-        }
+        Self { font_db: fontdb }
     }
 
     pub fn render(&self, svg_data: Vec<u8>) -> Result<Vec<u8>, RenderError> {
         let tree = {
             let opt = usvg::Options::default();
             let mut tree_result = usvg::Tree::from_data(&*svg_data, &opt);
-            if tree_result.is_err() { return Err(RenderError { message: Some("Failed to parse".to_string()) }); }
+            if tree_result.is_err() {
+                return Err(RenderError {
+                    message: Some("Failed to parse".to_string()),
+                });
+            }
 
             let tree = tree_result.as_mut().unwrap();
             tree.convert_text(&self.font_db);
@@ -47,8 +49,8 @@ impl Rasterizer {
         let mut pixmap = tiny_skia::Pixmap::new(pixmap_size.width(), pixmap_size.height()).unwrap();
         tree.render(tiny_skia::Transform::default(), &mut pixmap.as_mut());
 
-        pixmap
-            .encode_png()
-            .map_err(|_| RenderError { message: Some("Failed to encode".to_string()) })
+        pixmap.encode_png().map_err(|_| RenderError {
+            message: Some("Failed to encode".to_string()),
+        })
     }
 }

@@ -8,13 +8,14 @@ pub trait Months {
 
 impl Months for Duration {
     fn months(count: i32) -> Self {
-        Duration::milliseconds((Duration::days(1).num_milliseconds() as f64 * (365.25f64 / 12f64)) as i64) * count
+        Duration::milliseconds(
+            (Duration::days(1).num_milliseconds() as f64 * (365.25f64 / 12f64)) as i64,
+        ) * count
     }
 }
 
-
 lazy_static! {
-    static ref FULL_RELATIVE_PATTERN : Regex = Regex::new(concat!(
+    static ref FULL_RELATIVE_PATTERN: Regex = Regex::new(concat!(
         "(?<sign>[-+])?",
         r"(?:(?<year>\d+)\s?(?:y|yrs?|years?))?",
         r"(?:(?<month>\d+)\s?(?:mon|months?))?",
@@ -22,7 +23,9 @@ lazy_static! {
         r"(?:(?<day>\d+)\s?(?:d|days?))?",
         r"(?:(?<hour>\d+)\s?(?:h|hrs?|hours?))?",
         r"(?:(?<minute>\d+)\s?(?:m|mins?|minutes?))?",
-        r"(?:(?<second>\d+)\s?(?:s|secs?|seconds?))?")).unwrap();
+        r"(?:(?<second>\d+)\s?(?:s|secs?|seconds?))?"
+    ))
+    .unwrap();
 }
 
 pub fn parse_duration(str: &str) -> Result<Duration, String> {
@@ -30,59 +33,115 @@ pub fn parse_duration(str: &str) -> Result<Duration, String> {
     let mut value = Duration::zero();
 
     if let Some(raw_year) = capture.name("year") {
-        value = value + match raw_year.as_str().parse::<i64>() {
-            Ok(year) => Duration::days(year * 365) + (if year > 0 { Duration::hours(6) * year as i32 } else { Duration::zero() }),
-            Err(e) => return Err(format!("Could not parse year from {} ({})", raw_year.as_str(), e.to_string()))
-        };
+        value = value
+            + match raw_year.as_str().parse::<i64>() {
+                Ok(year) => {
+                    Duration::days(year * 365)
+                        + (if year > 0 {
+                            Duration::hours(6) * year as i32
+                        } else {
+                            Duration::zero()
+                        })
+                }
+                Err(e) => {
+                    return Err(format!(
+                        "Could not parse year from {} ({})",
+                        raw_year.as_str(),
+                        e.to_string()
+                    ))
+                }
+            };
     }
 
     if let Some(raw_month) = capture.name("month") {
-        value = value + match raw_month.as_str().parse::<i32>() {
-            Ok(month) => Duration::months(month),
-            Err(e) => return Err(format!("Could not parse month from {} ({})", raw_month.as_str(), e.to_string()))
-        };
+        value = value
+            + match raw_month.as_str().parse::<i32>() {
+                Ok(month) => Duration::months(month),
+                Err(e) => {
+                    return Err(format!(
+                        "Could not parse month from {} ({})",
+                        raw_month.as_str(),
+                        e.to_string()
+                    ))
+                }
+            };
     }
 
     if let Some(raw_week) = capture.name("week") {
-        value = value + match raw_week.as_str().parse::<i64>() {
-            Ok(week) => Duration::days(7) * week as i32,
-            Err(e) => return Err(format!("Could not parse week from {} ({})", raw_week.as_str(), e.to_string()))
-        };
+        value = value
+            + match raw_week.as_str().parse::<i64>() {
+                Ok(week) => Duration::days(7) * week as i32,
+                Err(e) => {
+                    return Err(format!(
+                        "Could not parse week from {} ({})",
+                        raw_week.as_str(),
+                        e.to_string()
+                    ))
+                }
+            };
     }
 
     if let Some(raw_day) = capture.name("day") {
-        value = value + match raw_day.as_str().parse::<i64>() {
-            Ok(day) => Duration::days(day),
-            Err(e) => return Err(format!("Could not parse day from {} ({})", raw_day.as_str(), e.to_string()))
-        };
+        value = value
+            + match raw_day.as_str().parse::<i64>() {
+                Ok(day) => Duration::days(day),
+                Err(e) => {
+                    return Err(format!(
+                        "Could not parse day from {} ({})",
+                        raw_day.as_str(),
+                        e.to_string()
+                    ))
+                }
+            };
     }
 
     if let Some(raw_hour) = capture.name("hour") {
-        value = value + match raw_hour.as_str().parse::<i64>() {
-            Ok(hour) => Duration::hours(hour),
-            Err(e) => return Err(format!("Could not parse hour from {} ({})", raw_hour.as_str(), e.to_string()))
-        };
+        value = value
+            + match raw_hour.as_str().parse::<i64>() {
+                Ok(hour) => Duration::hours(hour),
+                Err(e) => {
+                    return Err(format!(
+                        "Could not parse hour from {} ({})",
+                        raw_hour.as_str(),
+                        e.to_string()
+                    ))
+                }
+            };
     }
 
     if let Some(raw_minute) = capture.name("minute") {
-        value = value + match raw_minute.as_str().parse::<i64>() {
-            Ok(minute) => Duration::minutes(minute),
-            Err(e) => return Err(format!("Could not parse minute from {} ({})", raw_minute.as_str(), e.to_string()))
-        };
+        value = value
+            + match raw_minute.as_str().parse::<i64>() {
+                Ok(minute) => Duration::minutes(minute),
+                Err(e) => {
+                    return Err(format!(
+                        "Could not parse minute from {} ({})",
+                        raw_minute.as_str(),
+                        e.to_string()
+                    ))
+                }
+            };
     }
 
     if let Some(raw_second) = capture.name("second") {
-        value = value + match raw_second.as_str().parse::<i64>() {
-            Ok(second) => Duration::seconds(second),
-            Err(e) => return Err(format!("Could not parse second from {} ({})", raw_second.as_str(), e.to_string()))
-        };
+        value = value
+            + match raw_second.as_str().parse::<i64>() {
+                Ok(second) => Duration::seconds(second),
+                Err(e) => {
+                    return Err(format!(
+                        "Could not parse second from {} ({})",
+                        raw_second.as_str(),
+                        e.to_string()
+                    ))
+                }
+            };
     }
 
     if let Some(raw_sign) = capture.name("sign") {
         match raw_sign.as_str() {
             "-" => value = -value,
             "+" => (),
-            _ => return Err(format!("Could not parse sign from {}", raw_sign.as_str()))
+            _ => return Err(format!("Could not parse sign from {}", raw_sign.as_str())),
         };
     }
 
@@ -90,8 +149,8 @@ pub fn parse_duration(str: &str) -> Result<Duration, String> {
 }
 
 mod tests {
+    use crate::relative::{parse_duration, Months};
     use chrono::Duration;
-    use crate::relative::{Months, parse_duration};
 
     #[test]
     fn parse_empty() {
@@ -102,15 +161,37 @@ mod tests {
 
     #[test]
     fn parse_composite() {
-        assert_eq!(parse_duration("1y2mon3w4d5h6m7s"), Ok(Duration::hours(365 * 24 + 6) + Duration::months(2) + Duration::days(3 * 7 + 4) + Duration::hours(5) + Duration::minutes(6) + Duration::seconds(7)));
-        assert_eq!(parse_duration("19year33weeks4d9min"), Ok(Duration::hours((365 * 24 + 6) * 19) + Duration::days(33 * 7 + 4) + Duration::minutes(9)));
+        assert_eq!(
+            parse_duration("1y2mon3w4d5h6m7s"),
+            Ok(Duration::hours(365 * 24 + 6)
+                + Duration::months(2)
+                + Duration::days(3 * 7 + 4)
+                + Duration::hours(5)
+                + Duration::minutes(6)
+                + Duration::seconds(7))
+        );
+        assert_eq!(
+            parse_duration("19year33weeks4d9min"),
+            Ok(Duration::hours((365 * 24 + 6) * 19)
+                + Duration::days(33 * 7 + 4)
+                + Duration::minutes(9))
+        );
     }
 
     #[test]
     fn parse_year() {
-        assert_eq!(parse_duration("1y"), Ok(Duration::days(365) + Duration::hours(6)));
-        assert_eq!(parse_duration("2year"), Ok(Duration::days(365 * 2) + Duration::hours(6 * 2)));
-        assert_eq!(parse_duration("144years"), Ok(Duration::days(365 * 144) + Duration::hours(6 * 144)));
+        assert_eq!(
+            parse_duration("1y"),
+            Ok(Duration::days(365) + Duration::hours(6))
+        );
+        assert_eq!(
+            parse_duration("2year"),
+            Ok(Duration::days(365 * 2) + Duration::hours(6 * 2))
+        );
+        assert_eq!(
+            parse_duration("144years"),
+            Ok(Duration::days(365 * 144) + Duration::hours(6 * 144))
+        );
     }
 
     #[test]
