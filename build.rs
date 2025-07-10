@@ -150,12 +150,12 @@ fn generate_timezone_map() -> Result<(), BuildError> {
 
         match parse_timezone_line(&line)? {
             Some((abbreviation, offset)) => {
-                builder.entry(abbreviation.clone(), &offset.to_string());
+                builder.entry(abbreviation.clone(), offset.to_string());
                 processed_count += 1;
-                println!(
-                    "cargo:warning=Processed timezone: {} -> {} seconds",
-                    abbreviation, offset
-                );
+                // println!(
+                //     "cargo:warning=Processed timezone: {} -> {} seconds",
+                //     abbreviation, offset
+                // );
             }
             None => {
                 skipped_count += 1;

@@ -1,5 +1,5 @@
 use crate::error::{get_error_response, TimeBannerError};
-use axum::body::{Bytes, Full};
+use axum::body::{Body, Bytes};
 use axum::extract::Path;
 use axum::http::header;
 use axum::response::{Redirect, Response};
@@ -9,7 +9,7 @@ use chrono::{DateTime, NaiveDateTime, Offset, Utc};
 use crate::raster::Rasterizer;
 use crate::template::{render_template, OutputForm, RenderContext};
 
-fn split_on_extension(path: &str) -> Option<(&str, &str)> {
+pub fn split_on_extension(path: &str) -> Option<(&str, &str)> {
     let split = path.rsplit_once('.');
     if split.is_none() {
         return None;
@@ -109,7 +109,7 @@ pub async fn implicit_handler(Path(path): Path<String>) -> impl IntoResponse {
     if rendered_template.is_err() {
         return Response::builder()
             .status(StatusCode::INTERNAL_SERVER_ERROR)
-            .body(Full::from(format!(
+            .body(Body::from(format!(
                 "Template Could Not Be Rendered :: {}",
                 rendered_template.err().unwrap()
             )))

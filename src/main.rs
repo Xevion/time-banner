@@ -31,16 +31,18 @@ async fn main() {
 
     let app = Router::new()
         .route("/", get(index_handler))
-        .route("/:path", get(implicit_handler))
-        .route("/rel/:path", get(relative_handler))
-        .route("/relative/:path", get(relative_handler))
-        .route("/absolute/:path", get(absolute_handler))
-        .route("/abs/:path", get(absolute_handler))
+        .route("/{path}", get(implicit_handler))
+        .route("/rel/{path}", get(relative_handler))
+        .route("/relative/{path}", get(relative_handler))
+        .route("/absolute/{path}", get(absolute_handler))
+        .route("/abs/{path}", get(absolute_handler))
         .fallback(fallback_handler);
 
     let addr = SocketAddr::from((config.socket_addr(), config.port));
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service_with_connect_info::<SocketAddr>())
-        .await
-        .unwrap();
+    axum::serve(
+        tokio::net::TcpListener::bind(addr).await.unwrap(),
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
+    .unwrap();
 }
