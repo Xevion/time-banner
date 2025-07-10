@@ -5,6 +5,7 @@ use axum::body::Bytes;
 use axum::http::{header, StatusCode};
 use axum::response::IntoResponse;
 use chrono::{DateTime, Utc};
+use std::io::Cursor;
 
 /// Output format for rendered time banners.
 #[derive(Debug, Clone)]
@@ -41,7 +42,7 @@ impl OutputFormat {
 }
 
 /// Converts SVG to the requested format. PNG requires rasterization.
-fn handle_rasterize(data: String, format: &OutputFormat) -> Result<Bytes, TimeBannerError> {
+pub fn handle_rasterize(data: String, format: &OutputFormat) -> Result<Bytes, TimeBannerError> {
     match format {
         OutputFormat::Svg => Ok(Bytes::from(data)),
         OutputFormat::Png => {
@@ -102,4 +103,51 @@ pub fn render_time_response(
             .into_response(),
         Err(e) => get_error_response(e).into_response(),
     }
+}
+
+/// Generates PNG bytes for the favicon clock.
+pub fn generate_favicon_png_bytes(time: DateTime<Utc>) -> Result<Vec<u8>, TimeBannerError> {
+    // Build context for rendering
+    let context = RenderContext {
+        value: time,
+        output_form: OutputForm::Clock,
+        output_format: OutputFormat::Png,
+        timezone: None,
+        format: None,
+        now: None,
+    };
+
+    // Render template to SVG
+    let rendered_template = render_template(context)
+        .map_err(|e| TimeBannerError::RenderError(format!("Template rendering failed: {}", e)))?;
+
+    // Convert SVG to PNG
+    let png_bytes = handle_rasterize(rendered_template, &OutputFormat::Png)?;
+
+    Ok(png_bytes.to_vec())
+}
+
+/// Converts PNG bytes to ICO format using the ico crate.
+pub fn convert_png_to_ico(png_bytes: &[u8]) -> Result<Bytes, String> {
+    // Create a new, empty icon collection
+    let mut icon_dir = ico::IconDir::new(ico::ResourceType::Icon);
+
+    // Read PNG data from bytes
+    let cursor = Cursor::new(png_bytes);
+    let image =
+        ico::IconImage::read_png(cursor).map_err(|e| format!("Failed to read PNG data: {}", e))?;
+
+    // Add the image to the icon collection
+    icon_dir.add_entry(
+        ico::IconDirEntry::encode(&image)
+            .map_err(|e| format!("Failed to encode icon entry: {}", e))?,
+    );
+
+    // Write ICO data to a buffer
+    let mut ico_buffer = Vec::new();
+    icon_dir
+        .write(&mut ico_buffer)
+        .map_err(|e| format!("Failed to write ICO data: {}", e))?;
+
+    Ok(Bytes::from(ico_buffer))
 }

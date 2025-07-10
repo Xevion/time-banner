@@ -25,6 +25,7 @@ phf = { version = "0.12.1", features = ["macros"] }
 phf_codegen = "0.12.1"
 chrono = "0.4.41"
 regex = "1.11.1"
+ico = "0.4.0"
 
 [build-dependencies]
 chrono = "0.4.41"
