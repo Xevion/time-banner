@@ -157,18 +157,23 @@ mod tests {
     fn parse_composite() {
         assert_eq!(
             parse_duration("1y2mon3w4d5h6m7s"),
-            Ok(Duration::hours(365 * 24 + 6)
+            Ok(Duration::days(365)
+                + Duration::hours(6) // leap year compensation
                 + Duration::months(2)
-                + Duration::days(3 * 7 + 4)
+                + Duration::weeks(3)
+                + Duration::days(4)
                 + Duration::hours(5)
                 + Duration::minutes(6)
-                + Duration::seconds(7))
+                + Duration::seconds(7)),
+            "1y2mon3w4d5h6m7s"
         );
         assert_eq!(
             parse_duration("19year33weeks4d9min"),
-            Ok(Duration::hours((365 * 24 + 6) * 19)
+            Ok(Duration::days(365 * 19)
+                + Duration::hours(6 * 19)
                 + Duration::days(33 * 7 + 4)
-                + Duration::minutes(9))
+                + Duration::minutes(9)),
+            "19year33weeks4d9min"
         );
     }
 
@@ -190,49 +195,55 @@ mod tests {
 
     #[test]
     fn parse_month() {
-        assert_eq!(0, parse_duration("0mon").unwrap().num_minutes());
-        assert_eq!(131490, parse_duration("3mon").unwrap().num_minutes());
-        assert_eq!(-613620, parse_duration("-14mon").unwrap().num_minutes());
-        assert_eq!(6311520, parse_duration("+144months").unwrap().num_minutes());
+        assert_eq!(Duration::zero(), parse_duration("0mon").unwrap());
+        assert_eq!(Duration::months(3), parse_duration("3mon").unwrap());
+        assert_eq!(Duration::months(-14), parse_duration("-14mon").unwrap());
+        assert_eq!(Duration::months(144), parse_duration("+144months").unwrap());
     }
 
     #[test]
     fn parse_week() {
-        assert_eq!(parse_duration("0w"), Ok(Duration::zero()));
-        assert_eq!(parse_duration("7w"), Ok(Duration::days(7 * 7)));
-        assert_eq!(parse_duration("19week"), Ok(Duration::days(7 * 19)));
-        assert_eq!(parse_duration("433weeks"), Ok(Duration::days(7 * 433)));
+        assert_eq!(Duration::zero(), parse_duration("0w").unwrap());
+        assert_eq!(Duration::weeks(7), parse_duration("7w").unwrap());
+        assert_eq!(Duration::weeks(19), parse_duration("19week").unwrap());
+        assert_eq!(Duration::weeks(433), parse_duration("433weeks").unwrap());
     }
 
     #[test]
     fn parse_day() {
-        assert_eq!(parse_duration("0d"), Ok(Duration::zero()));
-        assert_eq!(parse_duration("9d"), Ok(Duration::days(9)));
-        assert_eq!(parse_duration("43day"), Ok(Duration::days(43)));
-        assert_eq!(parse_duration("969days"), Ok(Duration::days(969)));
+        assert_eq!(Duration::zero(), parse_duration("0d").unwrap());
+        assert_eq!(Duration::days(9), parse_duration("9d").unwrap());
+        assert_eq!(Duration::days(43), parse_duration("43day").unwrap());
+        assert_eq!(Duration::days(969), parse_duration("969days").unwrap());
     }
 
     #[test]
     fn parse_hour() {
-        assert_eq!(parse_duration("0h"), Ok(Duration::zero()));
-        assert_eq!(parse_duration("4h"), Ok(Duration::hours(4)));
-        assert_eq!(parse_duration("150hour"), Ok(Duration::hours(150)));
-        assert_eq!(parse_duration("777hours"), Ok(Duration::hours(777)));
+        assert_eq!(Duration::zero(), parse_duration("0h").unwrap());
+        assert_eq!(Duration::hours(4), parse_duration("4h").unwrap());
+        assert_eq!(Duration::hours(150), parse_duration("150hour").unwrap());
+        assert_eq!(Duration::hours(777), parse_duration("777hours").unwrap());
     }
 
     #[test]
     fn parse_minute() {
-        assert_eq!(parse_duration("0m"), Ok(Duration::zero()));
-        assert_eq!(parse_duration("5m"), Ok(Duration::minutes(5)));
-        assert_eq!(parse_duration("60min"), Ok(Duration::minutes(60)));
-        assert_eq!(parse_duration("999minutes"), Ok(Duration::minutes(999)));
+        assert_eq!(Duration::zero(), parse_duration("0m").unwrap());
+        assert_eq!(Duration::minutes(5), parse_duration("5m").unwrap());
+        assert_eq!(Duration::minutes(60), parse_duration("60min").unwrap());
+        assert_eq!(
+            Duration::minutes(999),
+            parse_duration("999minutes").unwrap()
+        );
     }
 
     #[test]
     fn parse_second() {
-        assert_eq!(parse_duration("0s"), Ok(Duration::zero()));
-        assert_eq!(parse_duration("6s"), Ok(Duration::seconds(6)));
-        assert_eq!(parse_duration("60sec"), Ok(Duration::minutes(1)));
-        assert_eq!(parse_duration("999seconds"), Ok(Duration::seconds(999)));
+        assert_eq!(Duration::zero(), parse_duration("0s").unwrap());
+        assert_eq!(Duration::seconds(6), parse_duration("6s").unwrap());
+        assert_eq!(Duration::minutes(1), parse_duration("60sec").unwrap());
+        assert_eq!(
+            Duration::seconds(999),
+            parse_duration("999seconds").unwrap()
+        );
     }
 }
