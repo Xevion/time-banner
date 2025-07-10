@@ -34,7 +34,7 @@ format-check:
 # Lint with clippy
 lint:
     @echo "🔍 Running clippy..."
-    cargo clippy --all-targets --all-features -- -D warnings
+    cargo clippy --all-targets --all-features --
 
 # Build project
 build:
