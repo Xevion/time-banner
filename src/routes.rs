@@ -1,13 +1,10 @@
 use crate::error::{get_error_response, TimeBannerError};
-use axum::body::{Body, Bytes};
+use axum::body::Bytes;
 use axum::extract::Path;
-use axum::http::header;
-use axum::response::{Redirect, Response};
-use axum::{http::StatusCode, response::IntoResponse};
-use chrono::{DateTime, NaiveDateTime, Offset, Utc};
+use axum::response::{IntoResponse, Redirect};
+use chrono::{DateTime, Utc};
 
 use crate::raster::Rasterizer;
-use crate::template::{render_template, OutputForm, RenderContext};
 
 pub fn split_on_extension(path: &str) -> Option<(&str, &str)> {
     let split = path.rsplit_once('.')?;
@@ -21,7 +18,7 @@ pub fn split_on_extension(path: &str) -> Option<(&str, &str)> {
 }
 
 fn parse_path(path: &str) -> (&str, &str) {
-    split_on_extension(path).or(Some((path, "svg"))).unwrap()
+    split_on_extension(path).unwrap_or((path, "svg"))
 }
 
 fn handle_rasterize(data: String, extension: &str) -> Result<(&str, Bytes), TimeBannerError> {

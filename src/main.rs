@@ -17,13 +17,14 @@ mod template;
 
 #[tokio::main]
 async fn main() {
-    // Parse dotenv files and expose them as environment variables
+    // Development-only: Parse dotenv files and expose them as environment variables
+    #[cfg(debug_assertions)]
     dotenv().ok();
 
-    // envy uses our Configuration struct to parse environment variables
-    let config = envy::from_env::<Configuration>().expect("Please provide PORT env var");
+    // Envy uses our Configuration struct to parse environment variables
+    let config = envy::from_env::<Configuration>().expect("Failed to parse environment variables");
 
-    // initialize tracing
+    // Initialize tracing
     tracing_subscriber::fmt()
         // With the log_level from our config
         .with_max_level(config.log_level())
