@@ -1,19 +1,19 @@
 use std::net::SocketAddr;
 
-use axum::{Router, routing::get};
-use dotenvy::dotenv;
+use crate::routes::{
+    absolute_handler, fallback_handler, implicit_handler, index_handler, relative_handler,
+};
+use axum::{routing::get, Router};
 use config::Configuration;
-use crate::routes::{relative_handler, implicit_handler, absolute_handler, index_handler, fallback_handler};
+use dotenvy::dotenv;
 
-mod config;
-mod raster;
 mod abbr;
-mod routes;
-mod parse;
-mod template;
+mod config;
 mod error;
+mod raster;
 mod relative;
-
+mod routes;
+mod template;
 
 #[tokio::main]
 async fn main() {
