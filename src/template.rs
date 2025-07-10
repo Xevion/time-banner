@@ -1,7 +1,9 @@
-use chrono::{DateTime, FixedOffset, Utc};
+use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
 use tera::{Context, Tera};
 use timeago::Formatter;
+
+use crate::render::OutputFormat;
 
 lazy_static! {
     static ref TEMPLATES: Tera = {
@@ -24,6 +26,7 @@ lazy_static! {
                 ::std::process::exit(1);
             }
         };
+
         _tera
     };
 }
@@ -33,12 +36,19 @@ pub enum OutputForm {
     Absolute,
 }
 
-pub struct RenderContext<'a> {
-    pub output_form: OutputForm,
+pub enum TzForm {
+    Abbreviation(String), // e.g. "CST"
+    Iso(String),          // e.g. "America/Chicago"
+    Offset(i32),          // e.g. "-0600" as -21600
+}
+
+pub struct RenderContext {
     pub value: DateTime<Utc>,
-    pub tz_offset: FixedOffset,
-    pub tz_name: &'a str,
-    pub view: &'a str,
+    pub output_form: OutputForm,
+    pub output_format: OutputFormat,
+    pub timezone: Option<TzForm>,
+    pub format: Option<String>,
+    pub now: Option<i64>,
 }
 
 pub fn render_template(context: RenderContext) -> Result<String, tera::Error> {

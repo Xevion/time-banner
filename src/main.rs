@@ -12,6 +12,7 @@ mod config;
 mod duration;
 mod error;
 mod raster;
+mod render;
 mod routes;
 mod template;
 

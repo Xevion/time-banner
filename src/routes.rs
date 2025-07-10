@@ -1,13 +1,10 @@
 use crate::duration::parse_duration;
 use crate::error::{get_error_response, TimeBannerError};
-use axum::body::Bytes;
+use crate::render::render_time_response;
+use crate::template::OutputForm;
 use axum::extract::Path;
-use axum::http::{header, StatusCode};
 use axum::response::IntoResponse;
-use chrono::{DateTime, FixedOffset, Utc};
-
-use crate::raster::Rasterizer;
-use crate::template::{render_template, OutputForm, RenderContext};
+use chrono::{DateTime, Utc};
 
 pub fn split_on_extension(path: &str) -> Option<(&str, &str)> {
     let split = path.rsplit_once('.')?;
@@ -22,27 +19,6 @@ pub fn split_on_extension(path: &str) -> Option<(&str, &str)> {
 
 fn parse_path(path: &str) -> (&str, &str) {
     split_on_extension(path).unwrap_or((path, "svg"))
-}
-
-fn handle_rasterize(data: String, extension: &str) -> Result<(&str, Bytes), TimeBannerError> {
-    match extension {
-        "svg" => Ok(("image/svg+xml", Bytes::from(data))),
-        "png" => {
-            let renderer = Rasterizer::new();
-            let raw_image = renderer.render(data.into_bytes());
-            if let Err(err) = raw_image {
-                return Err(TimeBannerError::RasterizeError(
-                    err.message.unwrap_or_else(|| "Unknown error".to_string()),
-                ));
-            }
-
-            Ok(("image/png", Bytes::from(raw_image.unwrap())))
-        }
-        _ => Err(TimeBannerError::RasterizeError(format!(
-            "Unsupported extension: {}",
-            extension
-        ))),
-    }
 }
 
 fn parse_epoch_into_datetime(epoch: i64) -> Option<DateTime<Utc>> {
@@ -80,41 +56,6 @@ fn parse_time_value(raw_time: &str) -> Result<DateTime<Utc>, TimeBannerError> {
         "Could not parse time value: {}",
         raw_time
     )))
-}
-
-fn render_time_response(
-    time: DateTime<Utc>,
-    output_form: OutputForm,
-    extension: &str,
-) -> impl IntoResponse {
-    // Build context for rendering
-    let context = RenderContext {
-        output_form,
-        value: time,
-        tz_offset: FixedOffset::east_opt(0).unwrap(), // UTC offset
-        tz_name: "UTC",
-        view: "basic",
-    };
-
-    // Render template
-    let rendered_template = match render_template(context) {
-        Ok(template) => template,
-        Err(e) => {
-            return get_error_response(TimeBannerError::RenderError(format!(
-                "Template rendering failed: {}",
-                e
-            )))
-            .into_response()
-        }
-    };
-
-    // Handle rasterization
-    match handle_rasterize(rendered_template, extension) {
-        Ok((mime_type, bytes)) => {
-            (StatusCode::OK, [(header::CONTENT_TYPE, mime_type)], bytes).into_response()
-        }
-        Err(e) => get_error_response(e).into_response(),
-    }
 }
 
 pub async fn index_handler() -> impl IntoResponse {
