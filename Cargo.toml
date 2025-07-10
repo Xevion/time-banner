@@ -7,28 +7,28 @@ edition = "2021"
 
 [dependencies]
 resvg = "0.34.1"
-axum = "0.6.18"
+axum = "0.6.20"
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0.68"
-tokio = { version = "1.0", features = ["full"] }
+serde_json = "1.0.140"
+tokio = { version = "1.46", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-futures = "0.3.28"
-png = "0.17.9"
+futures = "0.3.31"
+png = "0.17.16"
 dotenvy = "0.15.7"
 envy = "0.4.2"
-tera = "1.19.0"
-lazy_static = "1.4.0"
-timeago = "0.4.1"
-chrono-tz = "0.8.3"
-phf = { version = "0.11.2", features = ["macros"] }
-phf_codegen = "0.11.1"
-chrono = "0.4.26"
-regex = "1.8.4"
+tera = "1.20.0"
+lazy_static = "1.5.0"
+timeago = "0.4.2"
+chrono-tz = "0.8.6"
+phf = { version = "0.11.3", features = ["macros"] }
+phf_codegen = "0.11.3"
+chrono = "0.4.41"
+regex = "1.11.1"
 
 [build-dependencies]
-chrono = "0.4.26"
-regex = "1.8.4"
-phf = { version = "0.11.1", default-features = false }
-phf_codegen = "0.11.1"
-lazy_static = "1.4.0"
+chrono = "0.4.41"
+regex = "1.11.1"
+phf = { version = "0.11.3", default-features = false }
+phf_codegen = "0.11.3"
+lazy_static = "1.5.0"
