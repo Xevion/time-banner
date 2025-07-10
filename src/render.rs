@@ -20,6 +20,15 @@ impl OutputFormat {
         }
     }
 
+    pub fn from_mime_type(mime_type: &str) -> Self {
+        // TODO: Support mime types dynamically, proper header parsing
+        match mime_type {
+            "image/svg+xml" => OutputFormat::Svg,
+            "image/png" => OutputFormat::Png,
+            _ => OutputFormat::Svg, // Default to SVG
+        }
+    }
+
     pub fn mime_type(&self) -> &'static str {
         match self {
             OutputFormat::Svg => "image/svg+xml",

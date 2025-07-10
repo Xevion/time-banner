@@ -15,7 +15,7 @@ lazy_static! {
             "templates/**/*.svg"
         };
 
-        let mut _tera = match Tera::new(template_pattern) {
+        match Tera::new(template_pattern) {
             Ok(t) => {
                 let names: Vec<&str> = t.get_template_names().collect();
                 println!("{} templates found ([{}]).", names.len(), names.join(", "));
@@ -25,9 +25,7 @@ lazy_static! {
                 println!("Parsing error(s): {}", e);
                 ::std::process::exit(1);
             }
-        };
-
-        _tera
+        }
     };
 }
 

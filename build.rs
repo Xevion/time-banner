@@ -152,10 +152,6 @@ fn generate_timezone_map() -> Result<(), BuildError> {
             Some((abbreviation, offset)) => {
                 builder.entry(abbreviation.clone(), offset.to_string());
                 processed_count += 1;
-                // println!(
-                //     "cargo:warning=Processed timezone: {} -> {} seconds",
-                //     abbreviation, offset
-                // );
             }
             None => {
                 skipped_count += 1;

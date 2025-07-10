@@ -49,7 +49,6 @@ impl Rasterizer {
             tree_result.unwrap()
         };
 
-        let zoom = 0.90;
         let pixmap_size = tree.size().to_int_size();
         let mut pixmap = tiny_skia::Pixmap::new(pixmap_size.width(), pixmap_size.height()).unwrap();
 
@@ -58,6 +57,7 @@ impl Rasterizer {
         let center_y = pixmap_size.height() as f32 / 2.0;
 
         // Create transform that scales from center: translate to center, scale, translate back
+        let zoom = 0.90; // 10% zoom out from center
         let render_ts = tiny_skia::Transform::from_translate(-center_x, -center_y)
             .post_scale(zoom, zoom)
             .post_translate(center_x, center_y);

@@ -1,6 +1,8 @@
-use chrono::Duration;
+use chrono::{DateTime, Duration, Utc};
 use lazy_static::lazy_static;
 use regex::Regex;
+
+use crate::error::TimeBannerError;
 
 pub trait Months {
     fn months(count: i32) -> Self;
@@ -37,7 +39,7 @@ pub fn parse_duration(str: &str) -> Result<Duration, String> {
             Ok(year) => {
                 Duration::days(year * 365)
                     + (if year > 0 {
-                        Duration::hours(6) * year as i32
+                        Duration::hours(6) * year as i32 // Leap year compensation
                     } else {
                         Duration::zero()
                     })
@@ -139,6 +141,43 @@ pub fn parse_duration(str: &str) -> Result<Duration, String> {
     }
 
     Ok(value)
+}
+
+pub fn parse_epoch_into_datetime(epoch: i64) -> Option<DateTime<Utc>> {
+    DateTime::from_timestamp(epoch, 0)
+}
+
+pub fn parse_time_value(raw_time: &str) -> Result<DateTime<Utc>, TimeBannerError> {
+    // Handle relative time values (starting with + or -, or duration strings like "1y2d")
+    if raw_time.starts_with('+') || raw_time.starts_with('-') {
+        let now = Utc::now();
+
+        // Try parsing as simple offset seconds first
+        if let Ok(offset_seconds) = raw_time.parse::<i64>() {
+            return Ok(now + Duration::seconds(offset_seconds));
+        }
+
+        // Try parsing as duration string (e.g., "+1y2d", "-3h30m")
+        if let Ok(duration) = parse_duration(raw_time) {
+            return Ok(now + duration);
+        }
+
+        return Err(TimeBannerError::ParseError(format!(
+            "Could not parse relative time: {}",
+            raw_time
+        )));
+    }
+
+    // Try to parse as epoch timestamp
+    if let Ok(epoch) = raw_time.parse::<i64>() {
+        return parse_epoch_into_datetime(epoch)
+            .ok_or_else(|| TimeBannerError::ParseError("Invalid timestamp".to_string()));
+    }
+
+    Err(TimeBannerError::ParseError(format!(
+        "Could not parse time value: {}",
+        raw_time
+    )))
 }
 
 #[cfg(test)]

@@ -1,7 +1,7 @@
-use axum::http::StatusCode;
-use axum::Json;
-use serde::{Deserialize, Serialize};
+use axum::{http::StatusCode, response::Json};
+use serde::Serialize;
 
+#[derive(Debug)]
 pub enum TimeBannerError {
     ParseError(String),
     RenderError(String),
@@ -9,33 +9,41 @@ pub enum TimeBannerError {
     NotFound,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize)]
 pub struct ErrorResponse {
-    code: u16,
+    error: String,
     message: String,
 }
 
 pub fn get_error_response(error: TimeBannerError) -> (StatusCode, Json<ErrorResponse>) {
-    let (code, message) = match error {
+    match error {
+        TimeBannerError::ParseError(msg) => (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "ParseError".to_string(),
+                message: msg,
+            }),
+        ),
         TimeBannerError::RenderError(msg) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("RenderError :: {}", msg),
+            Json(ErrorResponse {
+                error: "RenderError".to_string(),
+                message: msg,
+            }),
         ),
-        TimeBannerError::ParseError(msg) => {
-            (StatusCode::BAD_REQUEST, format!("ParserError :: {}", msg))
-        }
         TimeBannerError::RasterizeError(msg) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("RasterizeError :: {}", msg),
+            Json(ErrorResponse {
+                error: "RasterizeError".to_string(),
+                message: msg,
+            }),
         ),
-        TimeBannerError::NotFound => (StatusCode::NOT_FOUND, "Not Found".to_string()),
-    };
-
-    (
-        code,
-        Json(ErrorResponse {
-            code: code.as_u16(),
-            message,
-        }),
-    )
+        TimeBannerError::NotFound => (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "NotFound".to_string(),
+                message: "The requested resource was not found".to_string(),
+            }),
+        ),
+    }
 }

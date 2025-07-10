@@ -15,6 +15,7 @@ mod raster;
 mod render;
 mod routes;
 mod template;
+mod utils;
 
 #[tokio::main]
 async fn main() {
