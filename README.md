@@ -42,7 +42,8 @@ My first Rust project, intended to offer a simple way to display the current tim
   - `.ext` requires a valid extension.
   - Supported values: `.png`/`image/png`,
 - `X-Timezone` or `?tz={timezone}` - The timezone to display the time in. If not specified, UTC is assumed.
-- `?format={format}` - The format of the time to display. If not specified, `%Y-%m-%d %H:%M:%S` is assumed.
+  - `auto` will attempt to determine the timezone from the client's IP address. Depending on currently unknown factors, this may be disregarded.
+- `?format={format}` - The format of the time to display. If not specified, `%Y-%m-%d %H:%M:%S %Z` is assumed.
   - Only relevant for `absolute` values.
 - `X-Date-Now` or `?now={timestamp}` - The timestamp to use for relative time calculations. If not specified, the current time is used.
 - `?static={boolean}` - Whether to redirect to a static version of the URL. Useful for creating specific URLs manually.
