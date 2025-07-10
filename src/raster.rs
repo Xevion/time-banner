@@ -1,3 +1,5 @@
+use std::default;
+
 use resvg::usvg::{fontdb, TreeParsing, TreeTextToPath};
 use resvg::{tiny_skia, usvg};
 
@@ -45,8 +47,13 @@ impl Rasterizer {
             resvg::Tree::from_usvg(&tree)
         };
 
-        let pixmap_size = tree.size.to_int_size();
-        let mut pixmap = tiny_skia::Pixmap::new(pixmap_size.width(), pixmap_size.height()).unwrap();
+        let content_area = tree.content_area.unwrap();
+
+        let mut pixmap = tiny_skia::Pixmap::new(
+            (content_area.width() + content_area.left() * 2f32).ceil() as u32,
+            (content_area.height() + content_area.top() * 2f32).ceil() as u32,
+        )
+        .unwrap();
         tree.render(tiny_skia::Transform::default(), &mut pixmap.as_mut());
 
         pixmap.encode_png().map_err(|_| RenderError {
