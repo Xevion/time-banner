@@ -106,8 +106,24 @@ fn parse_timezone_line(line: &str) -> Result<Option<(String, i32)>, BuildError> 
         .captures(line)
         .ok_or_else(|| BuildError::Regex(format!("Failed to match timezone pattern: {}", line)))?;
 
-    let abbreviation = captures.get(1).unwrap().as_str().to_string();
-    let raw_offset = captures.get(2).unwrap().as_str();
+    let abbreviation = match captures.get(1) {
+        Some(m) => m.as_str().to_string(),
+        None => {
+            return Err(BuildError::Regex(format!(
+                "Failed to extract abbreviation from line: {}",
+                line
+            )))
+        }
+    };
+    let raw_offset = match captures.get(2) {
+        Some(m) => m.as_str(),
+        None => {
+            return Err(BuildError::Regex(format!(
+                "Failed to extract offset from line: {}",
+                line
+            )))
+        }
+    };
 
     let offset = parse_utc_offset(raw_offset)?;
 
