@@ -23,6 +23,9 @@ My first Rust project, intended to offer a simple way to display the current tim
 - [x] Error Handling
   - [x] Comprehensive error responses
   - [x] Parse, render, and rasterization error handling
+- [ ] Dynamic Favicon
+  - [ ] .ico Rendering
+  - [ ] IP to Timezone
 
 ## Routes
 
