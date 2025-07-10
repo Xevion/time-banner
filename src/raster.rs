@@ -24,7 +24,11 @@ impl Rasterizer {
     pub fn new() -> Self {
         let mut fontdb = fontdb::Database::new();
         fontdb.load_system_fonts();
-        fontdb.load_fonts_dir("./fonts");
+        fontdb.load_fonts_dir(if cfg!(debug_assertions) {
+            "src/fonts"
+        } else {
+            "fonts"
+        });
 
         Self { font_db: fontdb }
     }

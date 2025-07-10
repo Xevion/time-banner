@@ -5,7 +5,15 @@ use timeago::Formatter;
 
 lazy_static! {
     static ref TEMPLATES: Tera = {
-        let mut _tera = match Tera::new("templates/**/*.svg") {
+        let template_pattern = if cfg!(debug_assertions) {
+            // Development: templates are in src/templates
+            "src/templates/**/*.svg"
+        } else {
+            // Production: templates are in /usr/src/app/templates (relative to working dir)
+            "templates/**/*.svg"
+        };
+
+        let mut _tera = match Tera::new(template_pattern) {
             Ok(t) => {
                 let names: Vec<&str> = t.get_template_names().collect();
                 println!("{} templates found ([{}]).", names.len(), names.join(", "));
