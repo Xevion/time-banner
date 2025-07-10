@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" font-family="Roboto Mono"
     font-size="27">
-    <text x="8" y="27" text-anchor="start">
+    <text text-anchor="start" dy="24">
         {{ text }}
     </text>
 </svg>

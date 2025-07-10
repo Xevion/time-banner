@@ -1,5 +1,3 @@
-use std::default;
-
 use resvg::usvg::fontdb;
 use resvg::{tiny_skia, usvg};
 
