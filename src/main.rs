@@ -7,11 +7,11 @@ use axum::{routing::get, Router};
 use config::Configuration;
 use dotenvy::dotenv;
 
-mod abbr;
+mod abbr_tz;
 mod config;
+mod duration;
 mod error;
 mod raster;
-mod relative;
 mod routes;
 mod template;
 

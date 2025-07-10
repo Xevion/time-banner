@@ -49,7 +49,7 @@ pub fn parse_abbreviation(abbreviation: &str) -> Result<FixedOffset, String> {
 
 #[cfg(test)]
 mod tests {
-    use crate::abbr::parse_abbreviation;
+    use crate::abbr_tz::parse_abbreviation;
     use chrono::FixedOffset;
 
     #[test]

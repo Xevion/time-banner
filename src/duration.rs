@@ -143,7 +143,7 @@ pub fn parse_duration(str: &str) -> Result<Duration, String> {
 
 #[cfg(test)]
 mod tests {
-    use crate::relative::{parse_duration, Months};
+    use crate::duration::{parse_duration, Months};
     use chrono::Duration;
 
     #[test]
