@@ -145,8 +145,8 @@ fn generate_timezone_map() -> Result<(), BuildError> {
     let mut processed_count = 0;
     let mut skipped_count = 0;
 
-    for (_line_num, line_result) in reader.lines().enumerate() {
-        let line = line_result?;
+    for line in reader.lines() {
+        let line = line?;
 
         match parse_timezone_line(&line)? {
             Some((abbreviation, offset)) => {

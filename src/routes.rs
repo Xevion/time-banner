@@ -10,23 +10,18 @@ use crate::raster::Rasterizer;
 use crate::template::{render_template, OutputForm, RenderContext};
 
 pub fn split_on_extension(path: &str) -> Option<(&str, &str)> {
-    let split = path.rsplit_once('.');
-    if split.is_none() {
-        return None;
-    }
+    let split = path.rsplit_once('.')?;
 
     // Check that the file is not a dotfile (.env)
-    if split.unwrap().0.len() == 0 {
+    if split.0.is_empty() {
         return None;
     }
 
-    Some(split.unwrap())
+    Some(split)
 }
 
 fn parse_path(path: &str) -> (&str, &str) {
-    split_on_extension(path)
-        .or_else(|| Some((path, "svg")))
-        .unwrap()
+    split_on_extension(path).or(Some((path, "svg"))).unwrap()
 }
 
 fn handle_rasterize(data: String, extension: &str) -> Result<(&str, Bytes), TimeBannerError> {
@@ -35,12 +30,9 @@ fn handle_rasterize(data: String, extension: &str) -> Result<(&str, Bytes), Time
         "png" => {
             let renderer = Rasterizer::new();
             let raw_image = renderer.render(data.into_bytes());
-            if raw_image.is_err() {
+            if let Err(err) = raw_image {
                 return Err(TimeBannerError::RasterizeError(
-                    raw_image
-                        .unwrap_err()
-                        .message
-                        .unwrap_or("Unknown error".to_string()),
+                    err.message.unwrap_or_else(|| "Unknown error".to_string()),
                 ));
             }
 
@@ -55,73 +47,33 @@ fn handle_rasterize(data: String, extension: &str) -> Result<(&str, Bytes), Time
 
 pub async fn index_handler() -> impl IntoResponse {
     let epoch_now = Utc::now().timestamp();
-    return Redirect::temporary(&*format!("/relative/{epoch_now}")).into_response();
+
+    Redirect::temporary(&format!("/relative/{epoch_now}")).into_response()
 }
 
 pub async fn relative_handler(Path(path): Path<String>) -> impl IntoResponse {
-    let (raw_time, extension) = parse_path(path.as_str());
+    let (_raw_time, _extension) = parse_path(path.as_str());
+
+    get_error_response(TimeBannerError::NotFound).into_response()
 }
 
 pub async fn fallback_handler() -> impl IntoResponse {
-    return get_error_response(TimeBannerError::NotFound).into_response();
+    get_error_response(TimeBannerError::NotFound).into_response()
 }
 
 pub async fn absolute_handler(Path(path): Path<String>) -> impl IntoResponse {
-    let (raw_time, extension) = parse_path(path.as_str());
+    let (_raw_time, _extension) = parse_path(path.as_str());
+
+    get_error_response(TimeBannerError::NotFound).into_response()
 }
 
 // basic handler that responds with a static string
 pub async fn implicit_handler(Path(path): Path<String>) -> impl IntoResponse {
-    // Get extension if available
-    let (raw_time, extension) = parse_path(path.as_str());
+    let (_raw_time, _extension) = parse_path(path.as_str());
 
-    // Parse epoch
-    let parsed_epoch = raw_time.parse::<i64>();
-    if parsed_epoch.is_err() {
-        return get_error_response(TimeBannerError::ParseError(
-            "Input could not be parsed into integer.".to_string(),
-        ))
-        .into_response();
-    }
+    get_error_response(TimeBannerError::NotFound).into_response()
+}
 
-    // Convert epoch to DateTime
-    let naive_time = NaiveDateTime::from_timestamp_opt(parsed_epoch.unwrap(), 0);
-    if naive_time.is_none() {
-        return get_error_response(TimeBannerError::ParseError(
-            "Input was not a valid DateTime".to_string(),
-        ))
-        .into_response();
-    }
-
-    let utc_time = DateTime::<Utc>::from_utc(naive_time.unwrap(), Utc);
-
-    // Build context for rendering
-    let context = RenderContext {
-        output_form: OutputForm::Relative,
-        value: utc_time,
-        tz_offset: utc_time.offset().fix(),
-        tz_name: "UTC",
-        view: "basic",
-    };
-
-    let rendered_template = render_template(context);
-
-    if rendered_template.is_err() {
-        return Response::builder()
-            .status(StatusCode::INTERNAL_SERVER_ERROR)
-            .body(Body::from(format!(
-                "Template Could Not Be Rendered :: {}",
-                rendered_template.err().unwrap()
-            )))
-            .unwrap()
-            .into_response();
-    }
-
-    let rasterize_result = handle_rasterize(rendered_template.unwrap(), extension);
-    match rasterize_result {
-        Ok((mime_type, bytes)) => {
-            (StatusCode::OK, [(header::CONTENT_TYPE, mime_type)], bytes).into_response()
-        }
-        Err(e) => get_error_response(e).into_response(),
-    }
+fn parse_epoch_into_datetime(epoch: i64) -> Option<DateTime<Utc>> {
+    DateTime::from_timestamp(epoch, 0)
 }

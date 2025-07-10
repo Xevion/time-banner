@@ -35,9 +35,11 @@ impl Rasterizer {
 
     pub fn render(&self, svg_data: Vec<u8>) -> Result<Vec<u8>, RenderError> {
         let tree = {
-            let mut opt = usvg::Options::default();
-            opt.fontdb = std::sync::Arc::new(self.font_db.clone());
-            let tree_result = usvg::Tree::from_data(&*svg_data, &opt);
+            let opt = usvg::Options {
+                fontdb: std::sync::Arc::new(self.font_db.clone()),
+                ..Default::default()
+            };
+            let tree_result = usvg::Tree::from_data(&svg_data, &opt);
             if tree_result.is_err() {
                 return Err(RenderError {
                     message: Some("Failed to parse".to_string()),

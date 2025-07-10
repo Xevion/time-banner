@@ -33,108 +33,101 @@ pub fn parse_duration(str: &str) -> Result<Duration, String> {
     let mut value = Duration::zero();
 
     if let Some(raw_year) = capture.name("year") {
-        value = value
-            + match raw_year.as_str().parse::<i64>() {
-                Ok(year) => {
-                    Duration::days(year * 365)
-                        + (if year > 0 {
-                            Duration::hours(6) * year as i32
-                        } else {
-                            Duration::zero()
-                        })
-                }
-                Err(e) => {
-                    return Err(format!(
-                        "Could not parse year from {} ({})",
-                        raw_year.as_str(),
-                        e.to_string()
-                    ))
-                }
-            };
+        value += match raw_year.as_str().parse::<i64>() {
+            Ok(year) => {
+                Duration::days(year * 365)
+                    + (if year > 0 {
+                        Duration::hours(6) * year as i32
+                    } else {
+                        Duration::zero()
+                    })
+            }
+            Err(e) => {
+                return Err(format!(
+                    "Could not parse year from {} ({})",
+                    raw_year.as_str(),
+                    e
+                ))
+            }
+        };
     }
 
     if let Some(raw_month) = capture.name("month") {
-        value = value
-            + match raw_month.as_str().parse::<i32>() {
-                Ok(month) => Duration::months(month),
-                Err(e) => {
-                    return Err(format!(
-                        "Could not parse month from {} ({})",
-                        raw_month.as_str(),
-                        e.to_string()
-                    ))
-                }
-            };
+        value += match raw_month.as_str().parse::<i32>() {
+            Ok(month) => Duration::months(month),
+            Err(e) => {
+                return Err(format!(
+                    "Could not parse month from {} ({})",
+                    raw_month.as_str(),
+                    e
+                ))
+            }
+        };
     }
 
     if let Some(raw_week) = capture.name("week") {
-        value = value
-            + match raw_week.as_str().parse::<i64>() {
-                Ok(week) => Duration::days(7) * week as i32,
-                Err(e) => {
-                    return Err(format!(
-                        "Could not parse week from {} ({})",
-                        raw_week.as_str(),
-                        e.to_string()
-                    ))
-                }
-            };
+        value += match raw_week.as_str().parse::<i64>() {
+            Ok(week) => Duration::days(7) * week as i32,
+            Err(e) => {
+                return Err(format!(
+                    "Could not parse week from {} ({})",
+                    raw_week.as_str(),
+                    e
+                ))
+            }
+        };
     }
 
     if let Some(raw_day) = capture.name("day") {
-        value = value
-            + match raw_day.as_str().parse::<i64>() {
-                Ok(day) => Duration::days(day),
-                Err(e) => {
-                    return Err(format!(
-                        "Could not parse day from {} ({})",
-                        raw_day.as_str(),
-                        e.to_string()
-                    ))
-                }
-            };
+        value += match raw_day.as_str().parse::<i64>() {
+            Ok(day) => Duration::days(day),
+            Err(e) => {
+                return Err(format!(
+                    "Could not parse day from {} ({})",
+                    raw_day.as_str(),
+                    e
+                ))
+            }
+        };
     }
 
     if let Some(raw_hour) = capture.name("hour") {
-        value = value
-            + match raw_hour.as_str().parse::<i64>() {
-                Ok(hour) => Duration::hours(hour),
-                Err(e) => {
-                    return Err(format!(
-                        "Could not parse hour from {} ({})",
-                        raw_hour.as_str(),
-                        e.to_string()
-                    ))
-                }
-            };
+        value += match raw_hour.as_str().parse::<i64>() {
+            Ok(hour) => Duration::hours(hour),
+            Err(e) => {
+                return Err(format!(
+                    "Could not parse hour from {} ({})",
+                    raw_hour.as_str(),
+                    e
+                ))
+            }
+        };
     }
 
     if let Some(raw_minute) = capture.name("minute") {
-        value = value
-            + match raw_minute.as_str().parse::<i64>() {
-                Ok(minute) => Duration::minutes(minute),
-                Err(e) => {
-                    return Err(format!(
-                        "Could not parse minute from {} ({})",
-                        raw_minute.as_str(),
-                        e.to_string()
-                    ))
-                }
-            };
+        value += match raw_minute.as_str().parse::<i64>() {
+            Ok(minute) => Duration::minutes(minute),
+            Err(e) => {
+                return Err(format!(
+                    "Could not parse minute from {} ({})",
+                    raw_minute.as_str(),
+                    e
+                ))
+            }
+        };
     }
 
     if let Some(raw_second) = capture.name("second") {
-        value = value
-            + match raw_second.as_str().parse::<i64>() {
-                Ok(second) => Duration::seconds(second),
-                Err(e) => {
-                    return Err(format!(
-                        "Could not parse second from {} ({})",
-                        raw_second.as_str(),
-                        e.to_string()
-                    ))
-                }
-            };
+        value += match raw_second.as_str().parse::<i64>() {
+            Ok(second) => Duration::seconds(second),
+            Err(e) => {
+                return Err(format!(
+                    "Could not parse second from {} ({})",
+                    raw_second.as_str(),
+                    e
+                ))
+            }
+        };
     }
 
     if let Some(raw_sign) = capture.name("sign") {
@@ -148,6 +141,7 @@ pub fn parse_duration(str: &str) -> Result<Duration, String> {
     Ok(value)
 }
 
+#[cfg(test)]
 mod tests {
     use crate::relative::{parse_duration, Months};
     use chrono::Duration;
