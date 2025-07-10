@@ -1,6 +1,7 @@
 use resvg::usvg::fontdb;
 use resvg::{tiny_skia, usvg};
 
+/// Errors that can occur during SVG rasterization.
 #[derive(Debug, Clone)]
 pub struct RenderError {
     pub message: Option<String>,
@@ -21,6 +22,7 @@ pub struct Rasterizer {
 }
 
 impl Rasterizer {
+    /// Creates a new rasterizer and loads available fonts.
     pub fn new() -> Self {
         let mut fontdb = fontdb::Database::new();
         fontdb.load_system_fonts();
@@ -33,6 +35,7 @@ impl Rasterizer {
         Self { font_db: fontdb }
     }
 
+    /// Converts SVG data to PNG.
     pub fn render(&self, svg_data: Vec<u8>) -> Result<Vec<u8>, RenderError> {
         let tree = {
             let opt = usvg::Options {

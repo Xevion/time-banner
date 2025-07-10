@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use tracing::Level;
 
+/// Application environment configuration.
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum Environment {
@@ -8,6 +9,11 @@ pub enum Environment {
     Development,
 }
 
+/// Main configuration struct parsed from environment variables.
+///
+/// Environment variables:
+/// - `ENV`: "production" or "development" (default: development)
+/// - `PORT`: TCP port number (default: 3000)
 #[derive(Deserialize, Debug)]
 pub struct Configuration {
     #[serde(default = "default_env")]
@@ -26,6 +32,10 @@ fn default_env() -> Environment {
 }
 
 impl Configuration {
+    /// Returns the socket address to bind to based on environment.
+    ///
+    /// - Production: 0.0.0.0 (all interfaces)
+    /// - Development: 127.0.0.1 (localhost only)
     pub fn socket_addr(&self) -> [u8; 4] {
         match self.env {
             Environment::Production => {
@@ -49,6 +59,10 @@ impl Configuration {
         }
     }
 
+    /// Returns the appropriate log level for the environment.
+    ///
+    /// - Production: INFO
+    /// - Development: DEBUG
     pub fn log_level(&self) -> Level {
         match self.env {
             Environment::Production => Level::INFO,

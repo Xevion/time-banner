@@ -1,14 +1,22 @@
+//! Human-readable duration parsing with support for mixed time units.
+//!
+//! Parses strings like "1y2mon3w4d5h6m7s", "+1year", or "-3h30m" into chrono Duration objects.
+//! Time units can appear in any order and use various abbreviations.
+
 use chrono::{DateTime, Duration, Utc};
 use lazy_static::lazy_static;
 use regex::Regex;
 
 use crate::error::TimeBannerError;
 
+/// Extends chrono::Duration with month support using approximate calendar math.
 pub trait Months {
     fn months(count: i32) -> Self;
 }
 
 impl Months for Duration {
+    /// Creates a duration representing the given number of months.
+    /// Uses 365.25/12 ≈ 30.44 days per month for approximation.
     fn months(count: i32) -> Self {
         Duration::milliseconds(
             (Duration::days(1).num_milliseconds() as f64 * (365.25f64 / 12f64)) as i64,
@@ -17,6 +25,19 @@ impl Months for Duration {
 }
 
 lazy_static! {
+    /// Regex pattern matching duration strings with flexible ordering and abbreviations.
+    ///
+    /// Supports:
+    /// - Optional +/- sign
+    /// - Years: y, yr, yrs, year, years
+    /// - Months: mon, month, months
+    /// - Weeks: w, wk, wks, week, weeks
+    /// - Days: d, day, days
+    /// - Hours: h, hr, hrs, hour, hours
+    /// - Minutes: m, min, mins, minute, minutes
+    /// - Seconds: s, sec, secs, second, seconds
+    ///
+    /// Time units must appear in descending order of magnitude, e.g. "1y2d" is valid, "1d2y" is not.
     static ref FULL_RELATIVE_PATTERN: Regex = Regex::new(concat!(
         "(?<sign>[-+])?",
         r"(?:(?<year>\d+)\s?(?:years?|yrs?|y)\s*)?",
@@ -30,6 +51,16 @@ lazy_static! {
     .unwrap();
 }
 
+/// Parses a human-readable duration string into a chrono Duration.
+///
+/// Examples:
+/// - `"1y2d"` → 1 year + 2 days  
+/// - `"+3h30m"` → +3.5 hours
+/// - `"-1week"` → -7 days
+/// - `"2months4days"` → ~2.03 months
+///
+/// Years include leap year compensation (+6 hours per year).
+/// Empty strings return zero duration.
 pub fn parse_duration(str: &str) -> Result<Duration, String> {
     let capture = FULL_RELATIVE_PATTERN.captures(str).unwrap();
     let mut value = Duration::zero();
@@ -143,10 +174,17 @@ pub fn parse_duration(str: &str) -> Result<Duration, String> {
     Ok(value)
 }
 
+/// Converts Unix epoch timestamp to UTC DateTime.
 pub fn parse_epoch_into_datetime(epoch: i64) -> Option<DateTime<Utc>> {
     DateTime::from_timestamp(epoch, 0)
 }
 
+/// Parses various time value formats into a UTC datetime.
+///
+/// Supports:
+/// - Relative offsets: "+3600", "-1800" (seconds from now)
+/// - Duration strings: "+1y2d", "-3h30m" (using duration parser)
+/// - Epoch timestamps: "1752170474" (Unix timestamp)
 pub fn parse_time_value(raw_time: &str) -> Result<DateTime<Utc>, TimeBannerError> {
     // Handle relative time values (starting with + or -, or duration strings like "1y2d")
     if raw_time.starts_with('+') || raw_time.starts_with('-') {

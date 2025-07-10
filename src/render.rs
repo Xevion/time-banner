@@ -6,6 +6,7 @@ use axum::http::{header, StatusCode};
 use axum::response::IntoResponse;
 use chrono::{DateTime, Utc};
 
+/// Output format for rendered time banners.
 #[derive(Debug, Clone)]
 pub enum OutputFormat {
     Svg,
@@ -13,6 +14,7 @@ pub enum OutputFormat {
 }
 
 impl OutputFormat {
+    /// Determines output format from file extension. Defaults to SVG for unknown extensions.
     pub fn from_extension(ext: &str) -> Self {
         match ext {
             "png" => OutputFormat::Png,
@@ -29,6 +31,7 @@ impl OutputFormat {
         }
     }
 
+    /// Returns the appropriate MIME type for HTTP responses.
     pub fn mime_type(&self) -> &'static str {
         match self {
             OutputFormat::Svg => "image/svg+xml",
@@ -37,6 +40,7 @@ impl OutputFormat {
     }
 }
 
+/// Converts SVG to the requested format. PNG requires rasterization.
 fn handle_rasterize(data: String, format: &OutputFormat) -> Result<Bytes, TimeBannerError> {
     match format {
         OutputFormat::Svg => Ok(Bytes::from(data)),
@@ -53,6 +57,12 @@ fn handle_rasterize(data: String, format: &OutputFormat) -> Result<Bytes, TimeBa
     }
 }
 
+/// Main rendering pipeline: template → SVG → optional rasterization → HTTP response.
+///
+/// Takes a timestamp, display format, and file extension, then:
+/// 1. Renders the time using a template
+/// 2. Converts to the requested format (SVG or PNG)  
+/// 3. Returns an HTTP response with appropriate headers
 pub fn render_time_response(
     time: DateTime<Utc>,
     output_form: OutputForm,
