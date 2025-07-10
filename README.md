@@ -6,25 +6,30 @@ Dynamically generated timestamp images
 
 `GET /[relative|absolute]/[value]{.ext}?tz={timezone}&format={format_string}&now={timestamp}&static={boolean}`
 
-- `{relative|absolute}` - The display format of the time.
-- `{value}` - The time value to work with. Relative values can be specified by prefixing with `+` or `-`.
-  - Relative values are relative to the value acquired from the `now` parameter (which defaults to the current time).
+- [x] `{relative|absolute}` - The display format of the time.
+- [x] `{value}` - The time value to work with. Relative values can be specified by prefixing with `+` or `-`.
+  - [ ] Relative values are relative to the value acquired from the `now` parameter (which defaults to the current time).
   - Whether the value is relative or absolute has nothing to do with the display format.
-  - `/absolute/+0` will display the current time in UTC.
-  - Note: The `now` parameter is returned in the `Date` response header.
-- `Accept` or `{.ext}` - Determines the output format. If not specified, `.svg` is assumed.
-  - `Accept` requires a valid MIME type.
-  - `.ext` requires a valid extension.
-  - Supported values: `.png`/`image/png`,
-- `X-Timezone` or `?tz={timezone}` - The timezone to display the time in. If not specified, UTC is assumed.
-  - `auto` will attempt to determine the timezone from the client's IP address. Depending on currently unknown factors, this may be disregarded.
-- `?format={format}` - The format of the time to display. If not specified, `%Y-%m-%d %H:%M:%S %Z` is assumed.
-  - Only relevant for `absolute` values.
-- `X-Date-Now` or `?now={timestamp}` - The timestamp to use for relative time calculations. If not specified, the current time is used.
-- `?static={boolean}` - Whether to redirect to a static version of the URL. Useful for creating specific URLs manually.
-  - If a value is not passed, (`?static`), `true` is assumed. Anything other than `true`, `1` or `yes` (case-insensitive) is considered `false`.
-  - Some header values will be translated to query parameters if provided (not `Accept`).
-  - e.g. `/rel/+3600.png?static&now=1752170474` will redirect to `/relative/1752174074.png`
+  - [x] `/absolute/+0` will display the current time in UTC.
+  - [ ] Note: The `now` parameter is returned in the `Date` response header.
+- [x] `Accept` or `{.ext}` - Determines the output format. If not specified, `.svg` is assumed.
+  - [ ] `Accept` requires a valid MIME type.
+  - [x] `.ext` requires a valid extension.
+  - [ ] Supported values: `.png`/`image/png`,
+- [ ] `X-Timezone` or `?tz={timezone}` - The timezone to display the time in. If not specified, UTC is assumed.
+  - [ ] `auto` will attempt to determine the timezone from the client's IP address. Depending on currently unknown factors, this may be disregarded.
+    - [ ] Return detected timezone in `X-Timezone` response header.
+- [ ] `?format={format}` - The format of the time to display. If not specified, `%Y-%m-%d %H:%M:%S %Z` is assumed.
+  - [ ] Only relevant for `absolute` values.
+- [ ] `X-Date-Now` or `?now={timestamp}` - The timestamp to use for relative time calculations. If not specified, the current time is used.
+- [ ] `?static={boolean}` - Whether to redirect to a static version of the URL. Useful for creating specific URLs manually.
+  - [ ] If a value is not passed, (`?static`), `true` is assumed. Anything other than `true`, `1` or `yes` (case-insensitive) is considered `false`.
+  - [ ] Some header values will be translated to query parameters if provided (not `Accept`).
+  - [ ] e.g. `/rel/+3600.png?static&now=1752170474` will redirect to `/relative/1752174074.png`
+- [x] `/favicon.ico` - Returns a dynamic favicon of an analog clock.
+  - [ ] Uses naive timestamp from `X-Date-Now` if provided.
+  - [ ] Uses timezone from `X-Timezone` if provided.
+  - [ ] Uses IP geolocation to determine timezone if neither is provided.
 
 ### Examples
 
