@@ -83,6 +83,27 @@ pub async fn favicon_handler(ConnectInfo(addr): ConnectInfo<SocketAddr>) -> impl
     }
 }
 
+/// Handles `/favicon.png` - generates a dynamic clock favicon showing the current time.
+///
+/// Logs the client IP address and returns a PNG image of an analog clock.
+pub async fn favicon_png_handler(ConnectInfo(addr): ConnectInfo<SocketAddr>) -> impl IntoResponse {
+    let now = chrono::Utc::now();
+
+    // Log the IP address for the favicon request
+    tracing::info!("Favicon PNG request from IP: {}", addr.ip());
+
+    // Generate PNG bytes directly
+    match generate_favicon_png_bytes(now) {
+        Ok(png_bytes) => (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "image/png")],
+            png_bytes,
+        )
+            .into_response(),
+        Err(e) => get_error_response(e).into_response(),
+    }
+}
+
 /// Fallback handler for unmatched routes.
 pub async fn fallback_handler() -> impl IntoResponse {
     get_error_response(TimeBannerError::NotFound).into_response()

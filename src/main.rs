@@ -1,8 +1,8 @@
 use std::net::SocketAddr;
 
 use crate::routes::{
-    absolute_handler, fallback_handler, favicon_handler, implicit_handler, index_handler,
-    relative_handler,
+    absolute_handler, fallback_handler, favicon_handler, favicon_png_handler, implicit_handler,
+    index_handler, relative_handler,
 };
 use axum::{http::HeaderValue, response::Response, routing::get, Router};
 use config::Configuration;
@@ -36,6 +36,7 @@ async fn main() {
     let app = Router::new()
         .route("/", get(index_handler))
         .route("/favicon.ico", get(favicon_handler))
+        .route("/favicon.png", get(favicon_png_handler))
         .route("/{path}", get(implicit_handler))
         .route("/rel/{path}", get(relative_handler))
         .route("/relative/{path}", get(relative_handler))
