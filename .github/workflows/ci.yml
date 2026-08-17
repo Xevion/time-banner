@@ -23,6 +23,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
+      - uses: taiki-e/install-action@cargo-machete
       - name: Check formatting
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
@@ -32,6 +33,8 @@ jobs:
           fi
       - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Unused dependencies
+        run: cargo machete
 
   test:
     name: Test

@@ -10,7 +10,7 @@ default:
     just --list
 
 # Run all quality checks
-check: format-check lint test
+check: format-check lint test machete
 
 # Auto-format code
 format:
@@ -39,3 +39,7 @@ docker-build:
 # Security audit
 audit:
     cargo audit
+
+# Check for unused dependencies
+machete:
+    cargo machete
