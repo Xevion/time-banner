@@ -6,7 +6,6 @@ use crate::routes::{
 };
 use axum::{Router, http::HeaderValue, response::Response, routing::get};
 use config::Configuration;
-use dotenvy::dotenv;
 use std::time::Duration;
 use tower_http::compression::CompressionLayer;
 use tower_http::timeout::TimeoutLayer;
@@ -19,11 +18,15 @@ mod error;
 mod routes;
 mod utils;
 
+/// How long the server waits for in-flight requests to drain after a shutdown
+/// signal before forcing exit.
+const SHUTDOWN_DRAIN_TIMEOUT: Duration = Duration::from_secs(10);
+
 #[tokio::main]
 async fn main() {
     // Development-only: Parse dotenv files and expose them as environment variables
     #[cfg(debug_assertions)]
-    dotenv().ok();
+    dotenvy::dotenv().ok();
 
     let config = Configuration::load();
 
@@ -69,12 +72,49 @@ async fn main() {
         .layer(axum::middleware::map_response(add_server_header));
 
     let addr = SocketAddr::from((config.socket_addr(), config.port));
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(
-        tokio::net::TcpListener::bind(addr).await.unwrap(),
+        listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
+    .with_graceful_shutdown(shutdown_signal())
     .await
     .unwrap();
+}
+
+/// Waits for a shutdown signal, then arms a watchdog that forces the process
+/// to exit if the drain (waiting for in-flight requests) runs long.
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+
+    tracing::info!("shutdown signal received, draining in-flight requests");
+    tokio::spawn(async {
+        tokio::time::sleep(SHUTDOWN_DRAIN_TIMEOUT).await;
+        tracing::warn!(
+            timeout = ?SHUTDOWN_DRAIN_TIMEOUT,
+            "drain exceeded timeout, forcing exit"
+        );
+        std::process::exit(1);
+    });
 }
 
 /// Middleware to add server header with application version
