@@ -1,12 +1,14 @@
 use crate::client_ip::ClientIp;
-use crate::duration::parse_time_value;
 use crate::error::TimeBannerError;
-use crate::render::{convert_png_to_ico, generate_favicon_png_bytes, render_time_response};
-use crate::template::{OutputForm, render_index_page};
 use crate::utils::parse_path;
 use axum::extract::Path;
 use axum::http::{StatusCode, header};
 use axum::response::{Html, IntoResponse};
+use time_banner_core::parse_time_value;
+use time_banner_render::{
+    OutputForm, OutputFormat, convert_png_to_ico, generate_favicon_png_bytes, render_time,
+    template::render_index_page,
+};
 
 /// Root handler - renders a minimal demo page with live examples and usage docs.
 pub async fn index_handler() -> Result<impl IntoResponse, TimeBannerError> {
@@ -23,11 +25,12 @@ pub async fn relative_handler(
     tracing::debug!(raw_time, extension, "Relative time request");
     let now = chrono::Utc::now();
     let time = parse_time_value(raw_time, now)?;
-    Ok(render_time_response(
-        time,
-        now,
-        OutputForm::Relative,
-        extension,
+    let output_format = OutputFormat::from_extension(extension);
+    let bytes = render_time(time, now, OutputForm::Relative, output_format.clone())?;
+    Ok((
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, output_format.mime_type())],
+        bytes,
     ))
 }
 
@@ -39,11 +42,12 @@ pub async fn absolute_handler(
     tracing::debug!(raw_time, extension, "Absolute time request");
     let now = chrono::Utc::now();
     let time = parse_time_value(raw_time, now)?;
-    Ok(render_time_response(
-        time,
-        now,
-        OutputForm::Absolute,
-        extension,
+    let output_format = OutputFormat::from_extension(extension);
+    let bytes = render_time(time, now, OutputForm::Absolute, output_format.clone())?;
+    Ok((
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, output_format.mime_type())],
+        bytes,
     ))
 }
 
@@ -55,11 +59,12 @@ pub async fn implicit_handler(
     tracing::debug!(raw_time, extension, "Implicit time request");
     let now = chrono::Utc::now();
     let time = parse_time_value(raw_time, now)?;
-    Ok(render_time_response(
-        time,
-        now,
-        OutputForm::Absolute,
-        extension,
+    let output_format = OutputFormat::from_extension(extension);
+    let bytes = render_time(time, now, OutputForm::Absolute, output_format.clone())?;
+    Ok((
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, output_format.mime_type())],
+        bytes,
     ))
 }
 
@@ -71,10 +76,7 @@ pub async fn favicon_handler(
     let now = chrono::Utc::now();
 
     let png_bytes = generate_favicon_png_bytes(now)?;
-
-    let ico_bytes = convert_png_to_ico(&png_bytes).map_err(|e| {
-        TimeBannerError::RenderError(format!("Failed to convert PNG to ICO: {}", e))
-    })?;
+    let ico_bytes = convert_png_to_ico(&png_bytes)?;
 
     Ok((
         StatusCode::OK,

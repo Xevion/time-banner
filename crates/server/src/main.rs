@@ -13,15 +13,10 @@ use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
 
-mod abbr_tz;
 mod client_ip;
 mod config;
-mod duration;
 mod error;
-mod raster;
-mod render;
 mod routes;
-mod template;
 mod utils;
 
 #[tokio::main]

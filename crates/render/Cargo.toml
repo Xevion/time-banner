@@ -1,0 +1,21 @@
+[package]
+name = "time-banner-render"
+description = "Templating, rasterization, and encoding pipeline for time-banner"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "time_banner_render"
+
+[dependencies]
+resvg = "0.48"
+tera = "2"
+timeago = "0.6"
+chrono = "0.4.41"
+serde = { version = "1.0", features = ["derive"] }
+ico = "0.5"
+thiserror = "2.0"
+tracing = "0.1"

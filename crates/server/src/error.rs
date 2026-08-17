@@ -29,6 +29,22 @@ struct ErrorResponse {
     message: String,
 }
 
+impl From<time_banner_core::ParseError> for TimeBannerError {
+    fn from(e: time_banner_core::ParseError) -> Self {
+        TimeBannerError::ParseError(e.0)
+    }
+}
+
+impl From<time_banner_render::RenderError> for TimeBannerError {
+    fn from(e: time_banner_render::RenderError) -> Self {
+        match e {
+            time_banner_render::RenderError::Template(msg) => TimeBannerError::RenderError(msg),
+            time_banner_render::RenderError::Rasterize(msg) => TimeBannerError::RasterizeError(msg),
+            time_banner_render::RenderError::Encode(msg) => TimeBannerError::RenderError(msg),
+        }
+    }
+}
+
 impl IntoResponse for TimeBannerError {
     fn into_response(self) -> Response {
         let (status, error_name) = match &self {

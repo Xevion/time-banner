@@ -7,23 +7,29 @@ RUN apk add --no-cache \
     pkgconfig \
     openssl-dev
 
-WORKDIR /usr/src
-RUN USER=root cargo new --bin time-banner
 WORKDIR /usr/src/time-banner
 
-# Copy dependency files for better layer caching
-COPY ./Cargo.toml ./Cargo.lock* ./build.rs ./
-# Copy the timezone data file needed by build.rs
-COPY ./src/abbr_tz ./src/abbr_tz
+# Copy manifests and the core crate's build script (needs its data file) for
+# a dependency-only layer, cached separately from the application code.
+COPY ./Cargo.toml ./Cargo.lock* ./
+COPY ./crates/core/Cargo.toml ./crates/core/build.rs ./crates/core/
+COPY ./crates/core/src/abbr_tz ./crates/core/src/abbr_tz
+COPY ./crates/render/Cargo.toml ./crates/render/
+COPY ./crates/server/Cargo.toml ./crates/server/
+RUN mkdir -p crates/core/src crates/render/src crates/server/src \
+    && echo "fn main() {}" > crates/core/src/lib.rs \
+    && echo "" > crates/render/src/lib.rs \
+    && echo "fn main() {}" > crates/server/src/main.rs
 
-# Build empty app with downloaded dependencies to produce a stable image layer for next build
-RUN cargo build --release
+# Build with stub sources to produce a stable, dependency-only image layer
+RUN cargo build --release --workspace
 
-# Build web app with own code
-RUN rm src/*.rs
-COPY ./src ./src
-RUN rm ./target/release/deps/time_banner*
-RUN cargo build --release
+# Build with the real application code
+RUN rm crates/core/src/lib.rs crates/render/src/lib.rs crates/server/src/main.rs
+COPY ./crates ./crates
+COPY ./fonts ./fonts
+RUN rm target/release/deps/time_banner* target/release/deps/libtime_banner*
+RUN cargo build --release --workspace
 
 # Strip the binary to reduce size
 RUN strip target/release/time-banner
@@ -47,10 +53,10 @@ RUN addgroup -g $GID -S $APP_USER \
     && adduser -u $UID -D -S -G $APP_USER $APP_USER \
     && mkdir -p ${APP}
 
-# Copy application files
+# Copy application files. Templates are compiled into the binary; only the
+# fonts, which are loaded at runtime, need to ship alongside it.
 COPY --from=builder --chown=$APP_USER:$APP_USER /usr/src/time-banner/target/release/time-banner ${APP}/time-banner
-COPY --from=builder --chown=$APP_USER:$APP_USER /usr/src/time-banner/src/fonts ${APP}/fonts
-COPY --from=builder --chown=$APP_USER:$APP_USER /usr/src/time-banner/src/templates ${APP}/templates
+COPY --from=builder --chown=$APP_USER:$APP_USER /usr/src/time-banner/fonts ${APP}/fonts
 
 # Set proper permissions
 RUN chmod +x ${APP}/time-banner

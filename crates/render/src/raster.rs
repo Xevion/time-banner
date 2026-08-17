@@ -3,24 +3,16 @@ use std::sync::Arc;
 use resvg::usvg::fontdb;
 use resvg::{tiny_skia, usvg};
 
-/// Errors that can occur during SVG rasterization.
-#[derive(Debug, Clone)]
-pub struct RenderError {
-    pub message: Option<String>,
-}
-
-impl std::fmt::Display for RenderError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        if let Some(msg) = &self.message {
-            write!(f, "RenderError: {}", msg)
-        } else {
-            write!(f, "RenderError")
-        }
-    }
-}
+use crate::error::RenderError;
 
 pub struct Rasterizer {
     font_db: Arc<fontdb::Database>,
+}
+
+impl Default for Rasterizer {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Rasterizer {
@@ -29,11 +21,7 @@ impl Rasterizer {
     pub fn new() -> Self {
         let mut fontdb = fontdb::Database::new();
         fontdb.load_system_fonts();
-        fontdb.load_fonts_dir(if cfg!(debug_assertions) {
-            "src/fonts"
-        } else {
-            "fonts"
-        });
+        fontdb.load_fonts_dir("fonts");
 
         Self {
             font_db: Arc::new(fontdb),
@@ -47,9 +35,8 @@ impl Rasterizer {
                 fontdb: self.font_db.clone(),
                 ..Default::default()
             };
-            usvg::Tree::from_data(&svg_data, &opt).map_err(|_| RenderError {
-                message: Some("Failed to parse".to_string()),
-            })?
+            usvg::Tree::from_data(&svg_data, &opt)
+                .map_err(|e| RenderError::Rasterize(format!("Failed to parse SVG: {}", e)))?
         };
 
         let pixmap_size = tree.size().to_int_size();
@@ -67,8 +54,8 @@ impl Rasterizer {
 
         resvg::render(&tree, render_ts, &mut pixmap.as_mut());
 
-        pixmap.encode_png().map_err(|_| RenderError {
-            message: Some("Failed to encode".to_string()),
-        })
+        pixmap
+            .encode_png()
+            .map_err(|e| RenderError::Rasterize(format!("Failed to encode PNG: {}", e)))
     }
 }

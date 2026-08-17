@@ -8,7 +8,7 @@ use std::sync::LazyLock;
 use chrono::{DateTime, Duration, Utc};
 use regex::Regex;
 
-use crate::error::TimeBannerError;
+use crate::error::ParseError;
 
 /// Extends chrono::Duration with month support using approximate calendar math.
 pub trait Months {
@@ -188,10 +188,7 @@ pub fn parse_epoch_into_datetime(epoch: i64) -> Option<DateTime<Utc>> {
 /// - Epoch timestamps: "1752170474" (Unix timestamp)
 ///
 /// `now` is the reference instant relative values are computed against.
-pub fn parse_time_value(
-    raw_time: &str,
-    now: DateTime<Utc>,
-) -> Result<DateTime<Utc>, TimeBannerError> {
+pub fn parse_time_value(raw_time: &str, now: DateTime<Utc>) -> Result<DateTime<Utc>, ParseError> {
     // Handle relative time values (starting with + or -, or duration strings like "1y2d")
     if raw_time.starts_with('+') || raw_time.starts_with('-') {
         // Try parsing as simple offset seconds first
@@ -204,7 +201,7 @@ pub fn parse_time_value(
             return Ok(now + duration);
         }
 
-        return Err(TimeBannerError::ParseError(format!(
+        return Err(ParseError(format!(
             "Could not parse relative time: {}",
             raw_time
         )));
@@ -213,10 +210,10 @@ pub fn parse_time_value(
     // Try to parse as epoch timestamp
     if let Ok(epoch) = raw_time.parse::<i64>() {
         return parse_epoch_into_datetime(epoch)
-            .ok_or_else(|| TimeBannerError::ParseError("Invalid timestamp".to_string()));
+            .ok_or_else(|| ParseError("Invalid timestamp".to_string()));
     }
 
-    Err(TimeBannerError::ParseError(format!(
+    Err(ParseError(format!(
         "Could not parse time value: {}",
         raw_time
     )))

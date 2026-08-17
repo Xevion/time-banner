@@ -5,7 +5,7 @@ use serde::Serialize;
 use tera::{Context, Tera};
 use timeago::Formatter;
 
-use crate::render::OutputFormat;
+use crate::pipeline::OutputFormat;
 
 /// Global Tera template engine instance. Templates are compiled into the
 /// binary, so there is no filesystem path to resolve at startup.
@@ -208,7 +208,7 @@ mod tests {
         let svg = render_template(RenderContext {
             value: now,
             output_form: OutputForm::Absolute,
-            output_format: crate::render::OutputFormat::Svg,
+            output_format: crate::pipeline::OutputFormat::Svg,
             timezone: None,
             format: None,
             now,
@@ -225,7 +225,7 @@ mod tests {
         let svg = render_template(RenderContext {
             value: future,
             output_form: OutputForm::Relative,
-            output_format: crate::render::OutputFormat::Svg,
+            output_format: crate::pipeline::OutputFormat::Svg,
             timezone: None,
             format: None,
             now,
