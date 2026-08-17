@@ -1,17 +1,23 @@
-//! Human-readable duration parsing with support for mixed time units.
+//! The time-banner value grammar: epoch seconds, ISO 8601 instants, dates,
+//! durations, and intervals, plus the human-friendly shorthand layered on
+//! top (`now`, compact dates, `+1y2d3h`).
 //!
-//! Parses strings like "1y2mon3w4d5h6m7s", "+1year", or "-3h30m" into a
-//! `jiff::Span`. Time units can appear in any order and use various
-//! abbreviations.
+//! See `docs/SPEC.md` section 3 for the full grammar and section 3.1 for the
+//! digit-count rule that disambiguates compact dates from epoch seconds.
 
 use std::sync::LazyLock;
 
-use jiff::{Span, Timestamp, ToSpan, tz::TimeZone};
+use jiff::{
+    Span, Timestamp, ToSpan,
+    civil::{Date, Time},
+    tz::TimeZone,
+};
 use regex::Regex;
 
 use crate::error::ParseError;
 
-/// Regex pattern matching duration strings with flexible ordering and abbreviations.
+/// Regex pattern matching human-readable duration strings with flexible
+/// ordering and abbreviations.
 ///
 /// Supports:
 /// - Optional +/- sign
@@ -24,8 +30,11 @@ use crate::error::ParseError;
 /// - Seconds: s, sec, secs, second, seconds
 ///
 /// Time units must appear in descending order of magnitude, e.g. "1y2d" is valid, "1d2y" is not.
+/// Anchored so any leftover, unmatched text (garbage units, out-of-order
+/// components) fails the whole match rather than being silently ignored.
 static FULL_RELATIVE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(concat!(
+        "^",
         "(?<sign>[-+])?",
         r"(?:(?<year>\d+)\s?(?:years?|yrs?|y)\s*)?",
         r"(?:(?<month>\d+)\s?(?:months?|mon)\s*)?",
@@ -33,7 +42,8 @@ static FULL_RELATIVE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
         r"(?:(?<day>\d+)\s?(?:days?|d)\s*)?",
         r"(?:(?<hour>\d+)\s?(?:hours?|hrs?|h)\s*)?",
         r"(?:(?<minute>\d+)\s?(?:minutes?|mins?|m)\s*)?",
-        r"(?:(?<second>\d+)\s?(?:seconds?|secs?|s)\s*)?"
+        r"(?:(?<second>\d+)\s?(?:seconds?|secs?|s)\s*)?",
+        "$"
     ))
     .unwrap()
 });
@@ -48,9 +58,12 @@ static FULL_RELATIVE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
 ///
 /// Units are kept symbolic (a "year" is not resolved to a fixed number of
 /// seconds); resolving them against a reference instant happens in
-/// `parse_time_value`. Empty strings return a zero span.
+/// `parse_time_value`. Empty (or whitespace-only) strings return a zero span.
 pub fn parse_duration(str: &str) -> Result<Span, ParseError> {
-    let capture = FULL_RELATIVE_PATTERN.captures(str).unwrap();
+    let trimmed = str.trim();
+    let capture = FULL_RELATIVE_PATTERN
+        .captures(trimmed)
+        .ok_or_else(|| ParseError::UnrecognizedValue(str.to_string()))?;
 
     // The regex only ever captures '+' or '-' here, so no other value is reachable.
     let sign: i64 = if capture.name("sign").map(|m| m.as_str()) == Some("-") {
@@ -110,38 +123,154 @@ pub fn parse_epoch_into_timestamp(epoch: i64) -> Option<Timestamp> {
     Timestamp::from_second(epoch).ok()
 }
 
-/// Parses various time value formats into a `Timestamp`.
+/// Exactly 8 ASCII digits, e.g. `"20270101"`. Digit count alone decides this
+/// is a compact date rather than epoch seconds (section 3.1).
+fn is_compact_date(s: &str) -> bool {
+    s.len() == 8 && s.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// Parses an 8-digit compact date (`YYYYMMDD`) into a civil `Date`.
 ///
-/// Supports:
-/// - Relative offsets: "+3600", "-1800" (seconds from `now`)
-/// - Duration strings: "+1y2d", "-3h30m" (using duration parser, relative to `now`)
-/// - Epoch timestamps: "1752170474" (Unix timestamp)
+/// jiff's ISO 8601 parser only accepts the extended, hyphenated form, so the
+/// basic form has to be split and validated by hand.
+fn parse_compact_date(digits: &str) -> Result<Date, ParseError> {
+    let invalid = || ParseError::UnrecognizedValue(digits.to_string());
+    let year = digits[0..4].parse::<i16>().map_err(|_| invalid())?;
+    let month = digits[4..6].parse::<i8>().map_err(|_| invalid())?;
+    let day = digits[6..8].parse::<i8>().map_err(|_| invalid())?;
+    Date::new(year, month, day).map_err(|_| invalid())
+}
+
+/// Resolves a civil date to the `Timestamp` at midnight UTC.
+///
+/// Timezone resolution (section 6) isn't wired up yet, so every date is
+/// anchored to UTC for now; the tz axis is a later phase.
+fn date_to_timestamp(date: Date) -> Result<Timestamp, ParseError> {
+    date.to_zoned(TimeZone::UTC)
+        .map(|zoned| zoned.timestamp())
+        .map_err(|_| ParseError::OutOfRange)
+}
+
+/// Parses `date@time` (e.g. `"2027-01-01@14:30"`) into a `Timestamp`.
+///
+/// The date half accepts either the ISO extended or compact form; the time
+/// half is a civil `Time` (`HH:MM` or `HH:MM:SS`, optionally with fractional
+/// seconds).
+fn parse_date_and_time(
+    date_part: &str,
+    time_part: &str,
+    raw: &str,
+) -> Result<Timestamp, ParseError> {
+    let invalid = || ParseError::UnrecognizedValue(raw.to_string());
+
+    let date = if is_compact_date(date_part) {
+        parse_compact_date(date_part)?
+    } else {
+        date_part.parse::<Date>().map_err(|_| invalid())?
+    };
+    let time: Time = time_part.parse().map_err(|_| invalid())?;
+
+    date.to_datetime(time)
+        .to_zoned(TimeZone::UTC)
+        .map(|zoned| zoned.timestamp())
+        .map_err(|_| ParseError::OutOfRange)
+}
+
+/// Adds `span` to `reference`, resolving calendar units (years, months, ...)
+/// against a UTC-zoned view since they need a civil date to make sense of.
+fn apply_span(span: Span, reference: Timestamp) -> Result<Timestamp, ParseError> {
+    let zoned = reference.to_zoned(TimeZone::UTC);
+    zoned
+        .checked_add(span)
+        .map(|z| z.timestamp())
+        .map_err(|_| ParseError::OutOfRange)
+}
+
+/// Parses a value relative to `now`: signed seconds (`"+3600"`), a human
+/// duration (`"+1y2d3h"`), or a signed ISO 8601 duration (`"+P1Y2D"`).
+fn parse_relative_value(trimmed: &str, now: Timestamp) -> Result<Timestamp, ParseError> {
+    if let Ok(offset_seconds) = trimmed.parse::<i64>() {
+        return apply_span(offset_seconds.seconds(), now);
+    }
+
+    let is_negative = trimmed.starts_with('-');
+    let body = &trimmed[1..];
+
+    if body.starts_with('P') || body.starts_with('p') {
+        let mut span: Span = body
+            .parse()
+            .map_err(|_| ParseError::UnrecognizedValue(trimmed.to_string()))?;
+        if is_negative {
+            span = span.negate();
+        }
+        return apply_span(span, now);
+    }
+
+    let span = parse_duration(trimmed)?;
+    apply_span(span, now)
+}
+
+/// Parses a time value against the full grammar (section 3):
+///
+/// - `"now"`: the reference instant
+/// - Signed seconds, human durations, or signed ISO durations, relative to `now`
+/// - Epoch seconds (any digit count other than exactly 8)
+/// - A compact date (exactly 8 digits, `YYYYMMDD`)
+/// - `date@time` (ISO or compact date, `@`, civil time)
+/// - An ISO 8601 instant (`2027-01-01T00:00:00Z`)
+/// - An ISO 8601 date (`2027-01-01`), midnight UTC
 ///
 /// `now` is the reference instant relative values are computed against.
 pub fn parse_time_value(raw_time: &str, now: Timestamp) -> Result<Timestamp, ParseError> {
-    // Handle relative time values (starting with + or -, or duration strings like "1y2d")
-    if raw_time.starts_with('+') || raw_time.starts_with('-') {
-        let span = if let Ok(offset_seconds) = raw_time.parse::<i64>() {
-            offset_seconds.seconds()
-        } else {
-            parse_duration(raw_time)?
-        };
+    let trimmed = raw_time.trim();
 
-        // Calendar units (years, months, ...) need a reference date to
-        // resolve, so route through a UTC-zoned view of `now`.
-        let zoned = now.to_zoned(TimeZone::UTC);
-        let result = zoned
-            .checked_add(span)
-            .map_err(|_| ParseError::OutOfRange)?;
-        return Ok(result.timestamp());
+    if trimmed == "now" {
+        return Ok(now);
     }
 
-    // Try to parse as epoch timestamp
-    if let Ok(epoch) = raw_time.parse::<i64>() {
+    if trimmed.starts_with('+') || trimmed.starts_with('-') {
+        return parse_relative_value(trimmed, now);
+    }
+
+    if is_compact_date(trimmed) {
+        return date_to_timestamp(parse_compact_date(trimmed)?);
+    }
+
+    if let Some((date_part, time_part)) = trimmed.split_once('@') {
+        return parse_date_and_time(date_part, time_part, raw_time);
+    }
+
+    if let Ok(epoch) = trimmed.parse::<i64>() {
         return parse_epoch_into_timestamp(epoch).ok_or(ParseError::OutOfRange);
     }
 
+    if let Ok(timestamp) = trimmed.parse::<Timestamp>() {
+        return Ok(timestamp);
+    }
+
+    if let Ok(date) = trimmed.parse::<Date>() {
+        return date_to_timestamp(date);
+    }
+
     Err(ParseError::UnrecognizedValue(raw_time.to_string()))
+}
+
+/// Parses an interval (`progress` only, section 3): `start/end` or
+/// `start/P1Y` (start plus an unsigned ISO 8601 duration).
+pub fn parse_interval(raw: &str, now: Timestamp) -> Result<(Timestamp, Timestamp), ParseError> {
+    let invalid = || ParseError::UnrecognizedValue(raw.to_string());
+    let (start_part, end_part) = raw.split_once('/').ok_or_else(invalid)?;
+
+    let start = parse_time_value(start_part, now)?;
+
+    let end = if end_part.starts_with('P') || end_part.starts_with('p') {
+        let span: Span = end_part.parse().map_err(|_| invalid())?;
+        apply_span(span, start)?
+    } else {
+        parse_time_value(end_part, now)?
+    };
+
+    Ok((start, end))
 }
 
 #[cfg(test)]
@@ -236,10 +365,28 @@ mod tests {
     }
 
     #[rstest]
+    #[case::out_of_order("1d2y")]
+    #[case::garbage("banana")]
+    #[case::signed_garbage("+banana")]
+    fn rejects_malformed_duration_strings(#[case] input: &str) {
+        check!(let Err(ParseError::UnrecognizedValue(_)) = parse_duration(input));
+    }
+
+    #[rstest]
     #[case::epoch_seconds("1752170474", 0, 1752170474)]
     #[case::signed_seconds_forward("+3600", 1_000_000, 1_003_600)]
     #[case::signed_seconds_backward("-1800", 1_000_000, 998_200)]
     #[case::human_duration("+1d", 0, 86_400)]
+    #[case::now_literal("now", 1_700_000_000, 1_700_000_000)]
+    #[case::iso_duration_forward("+P1DT2H", 0, 93_600)]
+    #[case::iso_duration_backward("-P1D", 100_000, 13_600)]
+    #[case::iso_instant_utc("2027-01-01T00:00:00Z", 0, 1_798_761_600)]
+    #[case::iso_instant_with_offset("2027-01-01T00:00:00-05:00", 0, 1_798_779_600)]
+    #[case::iso_date("2027-01-01", 0, 1_798_761_600)]
+    #[case::compact_date("20270101", 0, 1_798_761_600)]
+    #[case::date_and_time("2027-01-01@14:30", 0, 1_798_813_800)]
+    #[case::compact_date_and_time("20270101@14:30", 0, 1_798_813_800)]
+    #[case::nine_digit_string_is_epoch_not_compact_date("999999999", 0, 999_999_999)]
     fn parses_a_recognized_value(
         #[case] raw: &str,
         #[case] now_epoch: i64,
@@ -257,6 +404,10 @@ mod tests {
     #[case::epoch_beyond_timestamp_range(
         &i64::MAX.to_string(),
         ParseError::OutOfRange
+    )]
+    #[case::invalid_compact_date(
+        "20271301",
+        ParseError::UnrecognizedValue("20271301".to_string())
     )]
     fn rejects_an_unparseable_value(#[case] raw: &str, #[case] expected: ParseError) {
         let now = Timestamp::UNIX_EPOCH;
@@ -286,6 +437,31 @@ mod tests {
     ) {
         check!(parse_duration(input).unwrap_err() == expected);
     }
+
+    #[rstest]
+    #[case::instant_pair(
+        "2026-01-01T00:00:00Z/2027-01-01T00:00:00Z",
+        1_767_225_600,
+        1_798_761_600
+    )]
+    #[case::date_pair("2026-01-01/2027-01-01", 1_767_225_600, 1_798_761_600)]
+    #[case::start_and_duration("2026-01-01/P1Y", 1_767_225_600, 1_798_761_600)]
+    fn parses_an_interval(
+        #[case] raw: &str,
+        #[case] expected_start_epoch: i64,
+        #[case] expected_end_epoch: i64,
+    ) {
+        let now = Timestamp::UNIX_EPOCH;
+        let (start, end) = parse_interval(raw, now).unwrap();
+        check!(start.as_second() == expected_start_epoch);
+        check!(end.as_second() == expected_end_epoch);
+    }
+
+    #[test]
+    fn interval_without_a_separator_is_unrecognized() {
+        let now = Timestamp::UNIX_EPOCH;
+        check!(let Err(ParseError::UnrecognizedValue(_)) = parse_interval("2026-01-01", now));
+    }
 }
 
 #[cfg(test)]
@@ -306,10 +482,17 @@ mod proptests {
             let _ = parse_duration(&s);
         }
 
+        #[test]
+        fn parse_interval_never_panics(s in ".{0,64}") {
+            let _ = parse_interval(&s, Timestamp::UNIX_EPOCH);
+        }
+
         /// Every epoch second within the representable range round-trips
-        /// through the value grammar unchanged.
+        /// through the value grammar unchanged, provided it isn't exactly 8
+        /// digits (which the grammar reads as a compact date instead).
         #[test]
         fn epoch_round_trips(epoch in -100_000_000_000i64..100_000_000_000i64) {
+            prop_assume!(epoch.to_string().trim_start_matches('-').len() != 8);
             let now = Timestamp::UNIX_EPOCH;
             let parsed = parse_time_value(&epoch.to_string(), now).unwrap();
             prop_assert_eq!(parsed.as_second(), epoch);

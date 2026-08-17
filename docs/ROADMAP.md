@@ -40,13 +40,13 @@ It adds no user-visible features.
 The parser everything else consumes. Property-testable in isolation once `core`
 exists.
 
-- [ ] ISO 8601 instants, durations, and intervals
-- [ ] Shorthand dates, `@`-separated date-times, compact dates
-- [ ] `now` literal
-- [ ] Human durations (`+1y2d3h`), unifying the existing duration parser
-- [ ] Digit-count disambiguation between compact dates and epochs
+- [x] ISO 8601 instants, durations, and intervals
+- [x] Shorthand dates, `@`-separated date-times, compact dates
+- [x] `now` literal
+- [x] Human durations (`+1y2d3h`), unifying the existing duration parser
+- [x] Digit-count disambiguation between compact dates and epochs
 - [ ] `?now=` and the `Date-Now` header as the reference instant
-- [ ] Round-trip and never-panic property tests over the whole grammar
+- [x] Round-trip and never-panic property tests over the whole grammar
 
 ## Phase 3: timezones and localization
 
