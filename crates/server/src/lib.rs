@@ -8,6 +8,7 @@ use tower_http::compression::CompressionLayer;
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
 
+use crate::resolve::resolve_request;
 use crate::routes::{
     absolute_handler, fallback_handler, favicon_handler, favicon_png_handler, implicit_handler,
     index_handler, relative_handler,
@@ -16,7 +17,7 @@ use crate::routes::{
 pub mod client_ip;
 pub mod config;
 pub mod error;
-pub mod reference_now;
+pub mod resolve;
 pub mod routes;
 pub mod utils;
 
@@ -47,6 +48,7 @@ pub fn build_router() -> Router {
                 .gzip(true)
                 .quality(tower_http::CompressionLevel::Fastest),
         ))
+        .layer(axum::middleware::from_fn(resolve_request))
         .layer(axum::middleware::map_response(add_server_header))
 }
 

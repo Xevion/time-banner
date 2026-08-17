@@ -238,8 +238,14 @@ Path segments containing `/` are a problem for IANA identifiers in path
 position. In query position they are fine. Where an identifier must appear in a
 path, `~` substitutes for `/`: `America~Chicago`.
 
-The resolved zone is echoed in the `Timezone` response header, always, including
-when it was resolved by geolocation or defaulted.
+The resolved zone is echoed in the `Timezone` response header, always,
+including when it was resolved by geolocation or defaulted. A zone that has an
+IANA identifier is reported by it; a fixed offset has none and is reported as
+`±HH:MM`.
+
+Offsets are read literally, so `UTC-6` is six hours behind UTC. This is the
+ISO reading, and the opposite of the POSIX `TZ` convention, where the same
+string means six hours ahead.
 
 ### 6.1 Abbreviation ambiguity
 
@@ -248,12 +254,23 @@ Standard. `IST` is India, Ireland, and Israel. `BST` is British Summer and
 Bangladesh Standard. The abbreviation table has to encode a choice, so the
 choice is stated rather than left implicit:
 
-- Ambiguous abbreviations resolve to the most populous interpretation.
-- The resolution is recorded in the generated table, not decided at request
-  time.
-- The `Timezone` response header always carries the resolved IANA identifier,
-  never the abbreviation, so a caller can see which reading they got.
+- Ambiguous abbreviations resolve to whichever reading dominates in
+  English-language usage, which is not the same as whichever covers the most
+  people. `CST` is US Central, though China Standard Time covers fifteen times
+  as many. `BST` is British Summer, though Bangladesh Standard covers more.
+  `IST` is India, which happens to be both.
+- An abbreviation resolves to a region, and therefore to that region's IANA
+  zone, not to the offset the name literally states. `?tz=CST` in July renders
+  CDT. A caller who wants a fixed offset should ask for one: `?tz=-06:00`.
+- Each abbreviation resolves to exactly one zone, recorded in the generated
+  table rather than decided at request time.
+- The `Timezone` response header carries the resolved IANA identifier, never
+  the abbreviation, so a caller can see which reading they got.
 - Callers who need a specific reading should send an IANA identifier.
+
+Abbreviations are matched ahead of IANA identifiers, because tzdb carries
+legacy `EST`, `MST`, and `HST` zones that never observe daylight saving.
+Matching those first would make `?tz=EST` an hour wrong all summer.
 
 ### 6.2 Geolocation
 

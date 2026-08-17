@@ -5,7 +5,7 @@
 use std::time::Duration;
 
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
-use jiff::Timestamp;
+use jiff::{Timestamp, tz::TimeZone};
 use time_banner_render::raster::{Rasterizer, encode_png};
 use time_banner_render::template::{RenderContext, render_template};
 use time_banner_render::{OutputForm, OutputFormat, render_time};
@@ -29,14 +29,17 @@ fn now() -> Timestamp {
 }
 
 fn context(offset: i64, form: OutputForm) -> RenderContext {
+    context_in(offset, form, OutputFormat::Svg)
+}
+
+fn context_in(offset: i64, form: OutputForm, format: OutputFormat) -> RenderContext {
     let now = now();
     let value = Timestamp::from_second(now.as_second() + offset).unwrap();
     RenderContext {
         value,
         output_form: form,
-        output_format: OutputFormat::Svg,
-        timezone: None,
-        format: None,
+        output_format: format,
+        tz: TimeZone::UTC,
         now,
     }
 }
@@ -108,15 +111,14 @@ fn bench_encode_png(c: &mut Criterion) {
 fn bench_end_to_end_case(
     group: &mut criterion::BenchmarkGroup<criterion::measurement::WallTime>,
     id: String,
-    value: Timestamp,
-    now: Timestamp,
+    offset: i64,
     form: OutputForm,
     format: OutputFormat,
 ) {
-    let bytes = render_time(value, now, form, format.clone()).unwrap();
+    let bytes = render_time(context_in(offset, form, format.clone())).unwrap();
     group.throughput(Throughput::Bytes(bytes.len() as u64));
     group.bench_function(id, |b| {
-        b.iter(|| render_time(value, now, form, format.clone()).unwrap())
+        b.iter(|| render_time(context_in(offset, form, format.clone())).unwrap())
     });
 }
 
@@ -126,39 +128,33 @@ fn bench_end_to_end(c: &mut Criterion) {
     let mut group = c.benchmark_group("end_to_end");
 
     for &(label, offset) in DURATIONS {
-        let ctx = context(offset, OutputForm::Relative);
         bench_end_to_end_case(
             &mut group,
             format!("{label}_svg"),
-            ctx.value,
-            ctx.now,
+            offset,
             OutputForm::Relative,
             OutputFormat::Svg,
         );
         bench_end_to_end_case(
             &mut group,
             format!("{label}_png"),
-            ctx.value,
-            ctx.now,
+            offset,
             OutputForm::Relative,
             OutputFormat::Png,
         );
     }
 
-    let now_ts = now();
     bench_end_to_end_case(
         &mut group,
         "absolute_svg".to_string(),
-        now_ts,
-        now_ts,
+        0,
         OutputForm::Absolute,
         OutputFormat::Svg,
     );
     bench_end_to_end_case(
         &mut group,
         "absolute_png".to_string(),
-        now_ts,
-        now_ts,
+        0,
         OutputForm::Absolute,
         OutputFormat::Png,
     );

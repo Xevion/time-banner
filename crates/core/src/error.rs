@@ -16,6 +16,11 @@ pub enum ParseError {
     /// The computed instant fell outside the representable timestamp range.
     #[error("time value out of representable range")]
     OutOfRange,
+
+    /// The input matched none of the recognized timezone forms: IANA
+    /// identifier, abbreviation, fixed offset, or prefixed offset.
+    #[error("unrecognized timezone: {0}")]
+    UnknownTimezone(String),
 }
 
 impl ParseError {
@@ -26,6 +31,7 @@ impl ParseError {
             ParseError::UnrecognizedValue(_) => "unrecognized_value",
             ParseError::ComponentOutOfRange { .. } => "component_out_of_range",
             ParseError::OutOfRange => "out_of_range",
+            ParseError::UnknownTimezone(_) => "unknown_timezone",
         }
     }
 }

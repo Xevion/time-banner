@@ -9,4 +9,4 @@ pub use error::RenderError;
 pub use pipeline::{
     OutputFormat, convert_png_to_ico, generate_favicon_png_bytes, handle_rasterize, render_time,
 };
-pub use template::OutputForm;
+pub use template::{OutputForm, RenderContext};

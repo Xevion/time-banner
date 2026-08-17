@@ -6,10 +6,6 @@ use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
 use std::sync::LazyLock;
 
-/// Regex to match timezone lines: "ABBR \t Description \t UTC+-HH:MM"
-static TIMEZONE_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"([A-Z]+)\s\t.+\s\tUTC([−+±]\d{2}(?::\d{2})?)").unwrap());
-
 /// Regex to parse UTC offset format: "+-HH:MM" or "+-HH"
 static OFFSET_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"([−+±])(\d{2})(?::(\d{2}))?").unwrap());
@@ -56,34 +52,47 @@ fn parse_utc_offset(raw_offset: &str) -> Result<i32> {
     })
 }
 
-/// Parse a single timezone line and extract abbreviation and offset
-fn parse_timezone_line(line: &str) -> Result<Option<(String, i32)>> {
-    // Skip comment lines
+/// One parsed row: abbreviation, offset in seconds, and representative IANA zone.
+struct Row {
+    abbreviation: String,
+    offset_seconds: i32,
+    zone: String,
+}
+
+/// Parse a single tab-separated row: abbreviation, description, UTC offset, IANA zone.
+///
+/// Comments and blank lines yield `None`. A row that is present but malformed
+/// is an error, so a mistyped column fails the build instead of silently
+/// dropping an abbreviation.
+fn parse_timezone_line(line: &str) -> Result<Option<Row>> {
     if line.trim().starts_with('#') || line.trim().is_empty() {
         return Ok(None);
     }
 
-    let captures = TIMEZONE_PATTERN
-        .captures(line)
-        .with_context(|| format!("Failed to match timezone pattern: {}", line))?;
+    let fields: Vec<&str> = line.split('\t').map(str::trim).collect();
+    let [abbreviation, _description, raw_offset, zone] = fields.as_slice() else {
+        bail!(
+            "Expected 4 tab-separated fields, found {}: {}",
+            fields.len(),
+            line
+        );
+    };
 
-    let abbreviation = captures
-        .get(1)
-        .with_context(|| format!("Failed to extract abbreviation from line: {}", line))?
-        .as_str()
-        .to_string();
+    if !abbreviation.chars().all(|c| c.is_ascii_uppercase()) {
+        bail!("Abbreviation must be ASCII uppercase: {}", abbreviation);
+    }
+    if !zone.contains('/') && *zone != "UTC" {
+        bail!("Zone must be an IANA identifier or UTC: {}", zone);
+    }
 
-    let raw_offset = captures
-        .get(2)
-        .with_context(|| format!("Failed to extract offset from line: {}", line))?
-        .as_str();
-
-    let offset = parse_utc_offset(raw_offset)?;
-
-    Ok(Some((abbreviation, offset)))
+    Ok(Some(Row {
+        abbreviation: abbreviation.to_string(),
+        offset_seconds: parse_utc_offset(raw_offset)?,
+        zone: zone.to_string(),
+    }))
 }
 
-/// Generate the PHF map code for timezone abbreviations to UTC offsets
+/// Generate the PHF map code for timezone abbreviations to their entries
 fn generate_timezone_map() -> Result<()> {
     let out_dir = env::var("OUT_DIR").context("OUT_DIR not set")?;
     let output_path = Path::new(&out_dir).join("timezone_map.rs");
@@ -103,8 +112,14 @@ fn generate_timezone_map() -> Result<()> {
         let line = line.context("Failed to read line")?;
 
         match parse_timezone_line(&line)? {
-            Some((abbreviation, offset)) => {
-                builder.entry(abbreviation.clone(), offset.to_string());
+            Some(row) => {
+                builder.entry(
+                    row.abbreviation,
+                    format!(
+                        r#"TzEntry {{ zone: "{}", offset_seconds: {} }}"#,
+                        row.zone, row.offset_seconds
+                    ),
+                );
                 processed_count += 1;
             }
             None => {
@@ -115,7 +130,7 @@ fn generate_timezone_map() -> Result<()> {
 
     writeln!(
         &mut out_file,
-        "/// Auto-generated timezone abbreviation to UTC offset (in seconds) mapping"
+        "/// Auto-generated timezone abbreviation to IANA zone mapping"
     )?;
     writeln!(
         &mut out_file,
@@ -126,14 +141,10 @@ fn generate_timezone_map() -> Result<()> {
     )?;
     writeln!(
         &mut out_file,
-        "pub static TIMEZONE_OFFSETS: phf::Map<&'static str, i32> = {};",
+        "pub static TIMEZONE_ABBREVIATIONS: phf::Map<&'static str, TzEntry> = {};",
         builder.build()
     )?;
 
-    println!(
-        "cargo:warning=Generated timezone map with {} entries",
-        processed_count
-    );
     Ok(())
 }
 

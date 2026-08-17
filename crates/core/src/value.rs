@@ -141,12 +141,9 @@ fn parse_compact_date(digits: &str) -> Result<Date, ParseError> {
     Date::new(year, month, day).map_err(|_| invalid())
 }
 
-/// Resolves a civil date to the `Timestamp` at midnight UTC.
-///
-/// Timezone resolution (section 6) isn't wired up yet, so every date is
-/// anchored to UTC for now; the tz axis is a later phase.
-fn date_to_timestamp(date: Date) -> Result<Timestamp, ParseError> {
-    date.to_zoned(TimeZone::UTC)
+/// Resolves a civil date to the `Timestamp` at midnight in `tz`.
+fn date_to_timestamp(date: Date, tz: &TimeZone) -> Result<Timestamp, ParseError> {
+    date.to_zoned(tz.clone())
         .map(|zoned| zoned.timestamp())
         .map_err(|_| ParseError::OutOfRange)
 }
@@ -160,6 +157,7 @@ fn parse_date_and_time(
     date_part: &str,
     time_part: &str,
     raw: &str,
+    tz: &TimeZone,
 ) -> Result<Timestamp, ParseError> {
     let invalid = || ParseError::UnrecognizedValue(raw.to_string());
 
@@ -171,15 +169,15 @@ fn parse_date_and_time(
     let time: Time = time_part.parse().map_err(|_| invalid())?;
 
     date.to_datetime(time)
-        .to_zoned(TimeZone::UTC)
+        .to_zoned(tz.clone())
         .map(|zoned| zoned.timestamp())
         .map_err(|_| ParseError::OutOfRange)
 }
 
 /// Adds `span` to `reference`, resolving calendar units (years, months, ...)
-/// against a UTC-zoned view since they need a civil date to make sense of.
-fn apply_span(span: Span, reference: Timestamp) -> Result<Timestamp, ParseError> {
-    let zoned = reference.to_zoned(TimeZone::UTC);
+/// against `tz` since they need a civil date to make sense of.
+fn apply_span(span: Span, reference: Timestamp, tz: &TimeZone) -> Result<Timestamp, ParseError> {
+    let zoned = reference.to_zoned(tz.clone());
     zoned
         .checked_add(span)
         .map(|z| z.timestamp())
@@ -188,9 +186,13 @@ fn apply_span(span: Span, reference: Timestamp) -> Result<Timestamp, ParseError>
 
 /// Parses a value relative to `now`: signed seconds (`"+3600"`), a human
 /// duration (`"+1y2d3h"`), or a signed ISO 8601 duration (`"+P1Y2D"`).
-fn parse_relative_value(trimmed: &str, now: Timestamp) -> Result<Timestamp, ParseError> {
+fn parse_relative_value(
+    trimmed: &str,
+    now: Timestamp,
+    tz: &TimeZone,
+) -> Result<Timestamp, ParseError> {
     if let Ok(offset_seconds) = trimmed.parse::<i64>() {
-        return apply_span(offset_seconds.seconds(), now);
+        return apply_span(offset_seconds.seconds(), now, tz);
     }
 
     let is_negative = trimmed.starts_with('-');
@@ -203,11 +205,11 @@ fn parse_relative_value(trimmed: &str, now: Timestamp) -> Result<Timestamp, Pars
         if is_negative {
             span = span.negate();
         }
-        return apply_span(span, now);
+        return apply_span(span, now, tz);
     }
 
     let span = parse_duration(trimmed)?;
-    apply_span(span, now)
+    apply_span(span, now, tz)
 }
 
 /// Parses a time value against the full grammar (section 3):
@@ -218,10 +220,15 @@ fn parse_relative_value(trimmed: &str, now: Timestamp) -> Result<Timestamp, Pars
 /// - A compact date (exactly 8 digits, `YYYYMMDD`)
 /// - `date@time` (ISO or compact date, `@`, civil time)
 /// - An ISO 8601 instant (`2027-01-01T00:00:00Z`)
-/// - An ISO 8601 date (`2027-01-01`), midnight UTC
+/// - An ISO 8601 date (`2027-01-01`), midnight in `tz`
 ///
-/// `now` is the reference instant relative values are computed against.
-pub fn parse_time_value(raw_time: &str, now: Timestamp) -> Result<Timestamp, ParseError> {
+/// `now` is the reference instant relative values are computed against, and
+/// `tz` the zone that gives civil dates and calendar spans their meaning.
+pub fn parse_time_value(
+    raw_time: &str,
+    now: Timestamp,
+    tz: &TimeZone,
+) -> Result<Timestamp, ParseError> {
     let trimmed = raw_time.trim();
 
     if trimmed == "now" {
@@ -229,15 +236,15 @@ pub fn parse_time_value(raw_time: &str, now: Timestamp) -> Result<Timestamp, Par
     }
 
     if trimmed.starts_with('+') || trimmed.starts_with('-') {
-        return parse_relative_value(trimmed, now);
+        return parse_relative_value(trimmed, now, tz);
     }
 
     if is_compact_date(trimmed) {
-        return date_to_timestamp(parse_compact_date(trimmed)?);
+        return date_to_timestamp(parse_compact_date(trimmed)?, tz);
     }
 
     if let Some((date_part, time_part)) = trimmed.split_once('@') {
-        return parse_date_and_time(date_part, time_part, raw_time);
+        return parse_date_and_time(date_part, time_part, raw_time, tz);
     }
 
     if let Ok(epoch) = trimmed.parse::<i64>() {
@@ -249,7 +256,7 @@ pub fn parse_time_value(raw_time: &str, now: Timestamp) -> Result<Timestamp, Par
     }
 
     if let Ok(date) = trimmed.parse::<Date>() {
-        return date_to_timestamp(date);
+        return date_to_timestamp(date, tz);
     }
 
     Err(ParseError::UnrecognizedValue(raw_time.to_string()))
@@ -257,17 +264,21 @@ pub fn parse_time_value(raw_time: &str, now: Timestamp) -> Result<Timestamp, Par
 
 /// Parses an interval (`progress` only, section 3): `start/end` or
 /// `start/P1Y` (start plus an unsigned ISO 8601 duration).
-pub fn parse_interval(raw: &str, now: Timestamp) -> Result<(Timestamp, Timestamp), ParseError> {
+pub fn parse_interval(
+    raw: &str,
+    now: Timestamp,
+    tz: &TimeZone,
+) -> Result<(Timestamp, Timestamp), ParseError> {
     let invalid = || ParseError::UnrecognizedValue(raw.to_string());
     let (start_part, end_part) = raw.split_once('/').ok_or_else(invalid)?;
 
-    let start = parse_time_value(start_part, now)?;
+    let start = parse_time_value(start_part, now, tz)?;
 
     let end = if end_part.starts_with('P') || end_part.starts_with('p') {
         let span: Span = end_part.parse().map_err(|_| invalid())?;
-        apply_span(span, start)?
+        apply_span(span, start, tz)?
     } else {
-        parse_time_value(end_part, now)?
+        parse_time_value(end_part, now, tz)?
     };
 
     Ok((start, end))
@@ -393,7 +404,12 @@ mod tests {
         #[case] expected_epoch: i64,
     ) {
         let now = Timestamp::from_second(now_epoch).unwrap();
-        check!(parse_time_value(raw, now).unwrap().as_second() == expected_epoch);
+        check!(
+            parse_time_value(raw, now, &TimeZone::UTC)
+                .unwrap()
+                .as_second()
+                == expected_epoch
+        );
     }
 
     #[rstest]
@@ -411,7 +427,7 @@ mod tests {
     )]
     fn rejects_an_unparseable_value(#[case] raw: &str, #[case] expected: ParseError) {
         let now = Timestamp::UNIX_EPOCH;
-        check!(parse_time_value(raw, now).unwrap_err() == expected);
+        check!(parse_time_value(raw, now, &TimeZone::UTC).unwrap_err() == expected);
     }
 
     #[rstest]
@@ -452,15 +468,38 @@ mod tests {
         #[case] expected_end_epoch: i64,
     ) {
         let now = Timestamp::UNIX_EPOCH;
-        let (start, end) = parse_interval(raw, now).unwrap();
+        let (start, end) = parse_interval(raw, now, &TimeZone::UTC).unwrap();
         check!(start.as_second() == expected_start_epoch);
         check!(end.as_second() == expected_end_epoch);
+    }
+
+    #[rstest]
+    #[case::iso_date("2027-01-01")]
+    #[case::compact_date("20270101")]
+    fn a_civil_date_is_midnight_in_the_given_zone(#[case] raw: &str) {
+        let chicago = TimeZone::get("America/Chicago").unwrap();
+        let parsed = parse_time_value(raw, Timestamp::UNIX_EPOCH, &chicago).unwrap();
+
+        // Midnight in Chicago is 06:00 UTC in January.
+        check!(parsed.as_second() == 1_798_761_600 + 6 * 3600);
+    }
+
+    /// A calendar day is a civil unit, so crossing a spring-forward
+    /// transition advances 23 hours of absolute time, not 24.
+    #[test]
+    fn a_calendar_span_resolves_against_local_civil_dates() {
+        let chicago = TimeZone::get("America/Chicago").unwrap();
+        let midnight_before_transition: Timestamp = "2025-03-09T06:00:00Z".parse().unwrap();
+
+        let parsed = parse_time_value("+1d", midnight_before_transition, &chicago).unwrap();
+
+        check!(parsed.as_second() - midnight_before_transition.as_second() == 23 * 3600);
     }
 
     #[test]
     fn interval_without_a_separator_is_unrecognized() {
         let now = Timestamp::UNIX_EPOCH;
-        check!(let Err(ParseError::UnrecognizedValue(_)) = parse_interval("2026-01-01", now));
+        check!(let Err(ParseError::UnrecognizedValue(_)) = parse_interval("2026-01-01", now, &TimeZone::UTC));
     }
 }
 
@@ -474,7 +513,7 @@ mod proptests {
         /// it must reject cleanly rather than panic, no matter what arrives.
         #[test]
         fn parse_time_value_never_panics(s in ".{0,64}") {
-            let _ = parse_time_value(&s, Timestamp::UNIX_EPOCH);
+            let _ = parse_time_value(&s, Timestamp::UNIX_EPOCH, &TimeZone::UTC);
         }
 
         #[test]
@@ -484,7 +523,7 @@ mod proptests {
 
         #[test]
         fn parse_interval_never_panics(s in ".{0,64}") {
-            let _ = parse_interval(&s, Timestamp::UNIX_EPOCH);
+            let _ = parse_interval(&s, Timestamp::UNIX_EPOCH, &TimeZone::UTC);
         }
 
         /// Every epoch second within the representable range round-trips
@@ -494,7 +533,7 @@ mod proptests {
         fn epoch_round_trips(epoch in -100_000_000_000i64..100_000_000_000i64) {
             prop_assume!(epoch.to_string().trim_start_matches('-').len() != 8);
             let now = Timestamp::UNIX_EPOCH;
-            let parsed = parse_time_value(&epoch.to_string(), now).unwrap();
+            let parsed = parse_time_value(&epoch.to_string(), now, &TimeZone::UTC).unwrap();
             prop_assert_eq!(parsed.as_second(), epoch);
         }
 
@@ -505,7 +544,7 @@ mod proptests {
             let now = Timestamp::from_second(1_700_000_000).unwrap();
             let sign = if offset < 0 { "" } else { "+" };
             let raw = format!("{sign}{offset}");
-            let parsed = parse_time_value(&raw, now).unwrap();
+            let parsed = parse_time_value(&raw, now, &TimeZone::UTC).unwrap();
             prop_assert_eq!(parsed.as_second(), now.as_second() + offset);
         }
     }

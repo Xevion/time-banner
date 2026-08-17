@@ -50,16 +50,18 @@ exists.
 
 ## Phase 3: timezones and localization
 
-- [ ] `?tz=` and the `Timezone` header
-- [ ] IANA identifiers, abbreviations, fixed and prefixed offsets
-- [ ] `~` substitution for `/` in path position
-- [ ] Documented abbreviation disambiguation, encoded in the generated table
-- [ ] `Timezone` response header on every response
-- [ ] `?format=` for absolute output, with bounded expansion
+- [x] `?tz=` and the `Timezone` header
+- [x] IANA identifiers, abbreviations, fixed and prefixed offsets
+- [x] `~` substitution for `/` in path position
+- [x] Documented abbreviation disambiguation, encoded in the generated table
+- [x] `Timezone` response header on every response
+- [ ] `?format=` for absolute output, with bounded expansion (absolute output
+      draws with the default pattern; the parameter itself is unwired)
 - [ ] `Accept-Language` negotiation and `?locale=`
 - [ ] `Content-Language` and `Vary: Accept-Language`
 - [ ] Bundled geolocation database for `tz=auto`, with `private` caching
-- [ ] Favicon consumes resolved timezone rather than always UTC
+      (`tz=auto` parses and falls through to UTC, as a geolocation miss does)
+- [x] Favicon consumes resolved timezone rather than always UTC
 
 ## Phase 4: fonts
 

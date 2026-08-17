@@ -1,7 +1,7 @@
 use std::io::Cursor;
 use std::sync::LazyLock;
 
-use jiff::Timestamp;
+use jiff::{Timestamp, tz::TimeZone};
 
 use crate::error::RenderError;
 use crate::raster::Rasterizer;
@@ -53,44 +53,22 @@ pub fn handle_rasterize(data: String, format: &OutputFormat) -> Result<Vec<u8>, 
 }
 
 /// Main rendering pipeline: template -> SVG -> optional rasterization -> encoded bytes.
-///
-/// `now` is the reference instant relative values are computed against.
-pub fn render_time(
-    time: Timestamp,
-    now: Timestamp,
-    output_form: OutputForm,
-    output_format: OutputFormat,
-) -> Result<Vec<u8>, RenderError> {
-    let context = RenderContext {
-        value: time,
-        output_form,
-        output_format: output_format.clone(),
-        timezone: None,
-        format: None,
-        now,
-    };
-
-    let rendered_template = render_template(context)
-        .map_err(|e| RenderError::Template(format!("Template rendering failed: {}", e)))?;
+pub fn render_time(context: RenderContext) -> Result<Vec<u8>, RenderError> {
+    let output_format = context.output_format.clone();
+    let rendered_template = render_template(context)?;
 
     handle_rasterize(rendered_template, &output_format)
 }
 
-/// Generates PNG bytes for the favicon clock.
-pub fn generate_favicon_png_bytes(time: Timestamp) -> Result<Vec<u8>, RenderError> {
-    let context = RenderContext {
+/// Generates PNG bytes for the favicon clock, with hands in `tz`.
+pub fn generate_favicon_png_bytes(time: Timestamp, tz: TimeZone) -> Result<Vec<u8>, RenderError> {
+    render_time(RenderContext {
         value: time,
         output_form: OutputForm::Clock,
         output_format: OutputFormat::Png,
-        timezone: None,
-        format: None,
+        tz,
         now: time,
-    };
-
-    let rendered_template = render_template(context)
-        .map_err(|e| RenderError::Template(format!("Template rendering failed: {}", e)))?;
-
-    handle_rasterize(rendered_template, &OutputFormat::Png)
+    })
 }
 
 /// Converts PNG bytes to ICO format using the ico crate.
@@ -133,7 +111,14 @@ mod tests {
         #[values(OutputFormat::Svg, OutputFormat::Png)] format: OutputFormat,
     ) {
         let now = Timestamp::from_second(1_700_000_000).unwrap();
-        let bytes = render_time(now, now, form, format.clone()).unwrap();
+        let bytes = render_time(RenderContext {
+            value: now,
+            output_form: form,
+            output_format: format.clone(),
+            tz: TimeZone::UTC,
+            now,
+        })
+        .unwrap();
 
         match format {
             OutputFormat::Svg => {
