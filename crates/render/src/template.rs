@@ -194,8 +194,10 @@ pub fn render_index_page(now: Timestamp) -> Result<String, tera::Error> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use assert2::assert;
     use jiff::ToSpan;
+
+    use super::*;
 
     #[test]
     fn index_page_renders() {

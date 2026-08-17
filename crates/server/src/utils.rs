@@ -20,30 +20,29 @@ pub fn parse_path(path: &str) -> (&str, &str) {
 
 #[cfg(test)]
 mod tests {
+    use assert2::check;
+    use rstest::rstest;
+
     use super::*;
 
-    #[test]
-    fn test_split_on_extension() {
-        assert_eq!(split_on_extension("file.txt"), Some(("file", "txt")));
-        assert_eq!(
-            split_on_extension("path/to/file.png"),
-            Some(("path/to/file", "png"))
-        );
-        assert_eq!(split_on_extension("noextension"), None);
-        assert_eq!(split_on_extension(".dotfile"), None); // dotfiles return None
-        assert_eq!(split_on_extension("file."), Some(("file", "")));
-        assert_eq!(
-            split_on_extension("file.name.ext"),
-            Some(("file.name", "ext"))
-        );
+    #[rstest]
+    #[case::simple("file.txt", Some(("file", "txt")))]
+    #[case::nested_path("path/to/file.png", Some(("path/to/file", "png")))]
+    #[case::no_extension("noextension", None)]
+    #[case::dotfile(".dotfile", None)]
+    #[case::trailing_dot("file.", Some(("file", "")))]
+    #[case::multiple_dots("file.name.ext", Some(("file.name", "ext")))]
+    fn splits_on_the_last_extension(#[case] path: &str, #[case] expected: Option<(&str, &str)>) {
+        check!(split_on_extension(path) == expected);
     }
 
-    #[test]
-    fn test_parse_path() {
-        assert_eq!(parse_path("file.txt"), ("file", "txt"));
-        assert_eq!(parse_path("path/to/file.png"), ("path/to/file", "png"));
-        assert_eq!(parse_path("noextension"), ("noextension", "svg")); // default to svg
-        assert_eq!(parse_path(".dotfile"), (".dotfile", "svg")); // dotfiles get svg default
-        assert_eq!(parse_path("file."), ("file", ""));
+    #[rstest]
+    #[case::simple("file.txt", ("file", "txt"))]
+    #[case::nested_path("path/to/file.png", ("path/to/file", "png"))]
+    #[case::no_extension_defaults_to_svg("noextension", ("noextension", "svg"))]
+    #[case::dotfile_defaults_to_svg(".dotfile", (".dotfile", "svg"))]
+    #[case::trailing_dot("file.", ("file", ""))]
+    fn defaults_to_svg_when_no_extension(#[case] path: &str, #[case] expected: (&str, &str)) {
+        check!(parse_path(path) == expected);
     }
 }

@@ -27,5 +27,7 @@ tower-http = { version = "0.7", features = ["trace", "timeout", "compression-ful
 jiff = "0.2.35"
 
 [dev-dependencies]
+assert2.workspace = true
 http-body-util = "0.1.5"
+rstest.workspace = true
 tower = { version = "0.5.3", default-features = false, features = ["util"] }

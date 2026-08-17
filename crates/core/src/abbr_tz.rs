@@ -35,46 +35,26 @@ pub fn parse_abbreviation(abbreviation: &str) -> Result<Offset, String> {
 
 #[cfg(test)]
 mod tests {
-    use crate::abbr_tz::parse_abbreviation;
+    use assert2::{assert, check};
     use jiff::tz::Offset;
+    use rstest::rstest;
 
-    #[test]
-    fn test_parse_cst() {
-        // CST (Central Standard Time) is UTC-6
-        let cst = parse_abbreviation("CST").unwrap();
-        assert_eq!(cst, Offset::from_seconds(-6 * 3600).unwrap());
+    use crate::abbr_tz::parse_abbreviation;
+
+    #[rstest]
+    #[case::cst("CST", -6 * 3600)]
+    #[case::est("EST", -5 * 3600)]
+    #[case::utc("UTC", 0)]
+    #[case::jst_positive_offset("JST", 9 * 3600)]
+    fn parses_known_abbreviation(#[case] abbreviation: &str, #[case] offset_seconds: i32) {
+        let offset = parse_abbreviation(abbreviation).unwrap();
+        check!(offset == Offset::from_seconds(offset_seconds).unwrap());
     }
 
     #[test]
-    fn test_parse_est() {
-        // EST (Eastern Standard Time) is UTC-5
-        let est = parse_abbreviation("EST").unwrap();
-        assert_eq!(est, Offset::from_seconds(-5 * 3600).unwrap());
-    }
-
-    #[test]
-    fn test_parse_utc() {
-        // UTC should be zero offset
-        let utc = parse_abbreviation("UTC").unwrap();
-        assert_eq!(utc, Offset::from_seconds(0).unwrap());
-    }
-
-    #[test]
-    fn test_parse_unknown() {
-        // Unknown abbreviation should return error
+    fn unknown_abbreviation_is_an_error() {
         let result = parse_abbreviation("INVALID");
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .contains("Unknown timezone abbreviation")
-        );
-    }
-
-    #[test]
-    fn test_parse_positive_offset() {
-        // JST (Japan Standard Time) is UTC+9
-        let jst = parse_abbreviation("JST").unwrap();
-        assert_eq!(jst, Offset::from_seconds(9 * 3600).unwrap());
+        assert!(let Err(message) = result);
+        assert!(message.contains("Unknown timezone abbreviation"));
     }
 }

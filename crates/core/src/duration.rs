@@ -146,153 +146,145 @@ pub fn parse_time_value(raw_time: &str, now: Timestamp) -> Result<Timestamp, Par
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use assert2::check;
     use jiff::{Span, ToSpan};
+    use rstest::rstest;
 
-    #[test]
-    fn parse_empty() {
-        assert_eq!(parse_duration("").unwrap().fieldwise(), Span::new());
-        assert_eq!(parse_duration(" ").unwrap().fieldwise(), Span::new());
-        assert_eq!(parse_duration("  ").unwrap().fieldwise(), Span::new());
+    use super::*;
+
+    #[rstest]
+    #[case::empty("")]
+    #[case::single_space(" ")]
+    #[case::double_space("  ")]
+    fn empty_input_is_a_zero_span(#[case] input: &str) {
+        check!(parse_duration(input).unwrap().fieldwise() == Span::new());
     }
 
-    #[test]
-    fn parse_composite() {
-        assert_eq!(
-            parse_duration("1y2mon3w4d5h6m7s").unwrap().fieldwise(),
-            1.years()
-                .months(2)
-                .weeks(3)
-                .days(4)
-                .hours(5)
-                .minutes(6)
-                .seconds(7)
-        );
-        assert_eq!(
-            parse_duration("19year33weeks4d9min").unwrap().fieldwise(),
-            19.years().weeks(33).days(4).minutes(9)
-        );
+    #[rstest]
+    #[case::every_unit_in_order(
+        "1y2mon3w4d5h6m7s",
+        1.years().months(2).weeks(3).days(4).hours(5).minutes(6).seconds(7)
+    )]
+    #[case::sparse_units(
+        "19year33weeks4d9min",
+        19.years().weeks(33).days(4).minutes(9)
+    )]
+    fn composite_duration_combines_every_matched_unit(#[case] input: &str, #[case] expected: Span) {
+        check!(parse_duration(input).unwrap().fieldwise() == expected.fieldwise());
     }
 
-    #[test]
-    fn parse_year() {
-        assert_eq!(parse_duration("1y").unwrap().fieldwise(), 1.years());
-        assert_eq!(parse_duration("2year").unwrap().fieldwise(), 2.years());
-        assert_eq!(parse_duration("144years").unwrap().fieldwise(), 144.years());
+    #[rstest]
+    #[case::bare("1y", 1)]
+    #[case::full_word("2year", 2)]
+    #[case::plural("144years", 144)]
+    fn parses_years(#[case] input: &str, #[case] n: i64) {
+        check!(parse_duration(input).unwrap().fieldwise() == n.years());
     }
 
-    #[test]
-    fn parse_month() {
-        assert_eq!(parse_duration("0mon").unwrap().fieldwise(), 0.months());
-        assert_eq!(parse_duration("3mon").unwrap().fieldwise(), 3.months());
-        assert_eq!(
-            parse_duration("-14mon").unwrap().fieldwise(),
-            (-14).months()
-        );
-        assert_eq!(
-            parse_duration("+144months").unwrap().fieldwise(),
-            144.months()
-        );
+    #[rstest]
+    #[case::zero("0mon", 0)]
+    #[case::bare("3mon", 3)]
+    #[case::negative("-14mon", -14)]
+    #[case::plural_with_sign("+144months", 144)]
+    fn parses_months(#[case] input: &str, #[case] n: i64) {
+        check!(parse_duration(input).unwrap().fieldwise() == n.months());
     }
 
-    #[test]
-    fn parse_week() {
-        assert_eq!(parse_duration("0w").unwrap().fieldwise(), 0.weeks());
-        assert_eq!(parse_duration("7w").unwrap().fieldwise(), 7.weeks());
-        assert_eq!(parse_duration("19week").unwrap().fieldwise(), 19.weeks());
-        assert_eq!(parse_duration("433weeks").unwrap().fieldwise(), 433.weeks());
+    #[rstest]
+    #[case::zero("0w", 0)]
+    #[case::bare("7w", 7)]
+    #[case::full_word("19week", 19)]
+    #[case::plural("433weeks", 433)]
+    fn parses_weeks(#[case] input: &str, #[case] n: i64) {
+        check!(parse_duration(input).unwrap().fieldwise() == n.weeks());
     }
 
-    #[test]
-    fn parse_day() {
-        assert_eq!(parse_duration("0d").unwrap().fieldwise(), 0.days());
-        assert_eq!(parse_duration("9d").unwrap().fieldwise(), 9.days());
-        assert_eq!(parse_duration("43day").unwrap().fieldwise(), 43.days());
-        assert_eq!(parse_duration("969days").unwrap().fieldwise(), 969.days());
+    #[rstest]
+    #[case::zero("0d", 0)]
+    #[case::bare("9d", 9)]
+    #[case::full_word("43day", 43)]
+    #[case::plural("969days", 969)]
+    fn parses_days(#[case] input: &str, #[case] n: i64) {
+        check!(parse_duration(input).unwrap().fieldwise() == n.days());
     }
 
-    #[test]
-    fn parse_hour() {
-        assert_eq!(parse_duration("0h").unwrap().fieldwise(), 0.hours());
-        assert_eq!(parse_duration("4h").unwrap().fieldwise(), 4.hours());
-        assert_eq!(parse_duration("150hour").unwrap().fieldwise(), 150.hours());
-        assert_eq!(parse_duration("777hours").unwrap().fieldwise(), 777.hours());
+    #[rstest]
+    #[case::zero("0h", 0)]
+    #[case::bare("4h", 4)]
+    #[case::full_word("150hour", 150)]
+    #[case::plural("777hours", 777)]
+    fn parses_hours(#[case] input: &str, #[case] n: i64) {
+        check!(parse_duration(input).unwrap().fieldwise() == n.hours());
     }
 
-    #[test]
-    fn parse_minute() {
-        assert_eq!(parse_duration("0m").unwrap().fieldwise(), 0.minutes());
-        assert_eq!(parse_duration("5m").unwrap().fieldwise(), 5.minutes());
-        assert_eq!(parse_duration("60min").unwrap().fieldwise(), 60.minutes());
-        assert_eq!(
-            parse_duration("999minutes").unwrap().fieldwise(),
-            999.minutes()
-        );
+    #[rstest]
+    #[case::zero("0m", 0)]
+    #[case::bare("5m", 5)]
+    #[case::abbreviated("60min", 60)]
+    #[case::plural("999minutes", 999)]
+    fn parses_minutes(#[case] input: &str, #[case] n: i64) {
+        check!(parse_duration(input).unwrap().fieldwise() == n.minutes());
     }
 
-    #[test]
-    fn parse_second() {
-        assert_eq!(parse_duration("0s").unwrap().fieldwise(), 0.seconds());
-        assert_eq!(parse_duration("6s").unwrap().fieldwise(), 6.seconds());
-        assert_eq!(parse_duration("60sec").unwrap().fieldwise(), 60.seconds());
-        assert_eq!(
-            parse_duration("999seconds").unwrap().fieldwise(),
-            999.seconds()
-        );
+    #[rstest]
+    #[case::zero("0s", 0)]
+    #[case::bare("6s", 6)]
+    #[case::abbreviated("60sec", 60)]
+    #[case::plural("999seconds", 999)]
+    fn parses_seconds(#[case] input: &str, #[case] n: i64) {
+        check!(parse_duration(input).unwrap().fieldwise() == n.seconds());
     }
 
-    #[test]
-    fn value_epoch_seconds() {
+    #[rstest]
+    #[case::epoch_seconds("1752170474", 0, 1752170474)]
+    #[case::signed_seconds_forward("+3600", 1_000_000, 1_003_600)]
+    #[case::signed_seconds_backward("-1800", 1_000_000, 998_200)]
+    #[case::human_duration("+1d", 0, 86_400)]
+    fn parses_a_recognized_value(
+        #[case] raw: &str,
+        #[case] now_epoch: i64,
+        #[case] expected_epoch: i64,
+    ) {
+        let now = Timestamp::from_second(now_epoch).unwrap();
+        check!(parse_time_value(raw, now).unwrap().as_second() == expected_epoch);
+    }
+
+    #[rstest]
+    #[case::unrecognized_value(
+        "not-a-time",
+        ParseError::UnrecognizedValue("not-a-time".to_string())
+    )]
+    #[case::epoch_beyond_timestamp_range(
+        &i64::MAX.to_string(),
+        ParseError::OutOfRange
+    )]
+    fn rejects_an_unparseable_value(#[case] raw: &str, #[case] expected: ParseError) {
         let now = Timestamp::UNIX_EPOCH;
-        let parsed = parse_time_value("1752170474", now).unwrap();
-        assert_eq!(parsed.as_second(), 1752170474);
+        check!(parse_time_value(raw, now).unwrap_err() == expected);
     }
 
-    #[test]
-    fn value_signed_seconds() {
-        let now = Timestamp::from_second(1_000_000).unwrap();
-        assert_eq!(
-            parse_time_value("+3600", now).unwrap().as_second(),
-            1_003_600
-        );
-        assert_eq!(parse_time_value("-1800", now).unwrap().as_second(), 998_200);
-    }
-
-    #[test]
-    fn value_human_duration() {
-        let now = Timestamp::from_second(0).unwrap();
-        let parsed = parse_time_value("+1d", now).unwrap();
-        assert_eq!(parsed.as_second(), 86_400);
-    }
-
-    #[test]
-    fn value_unrecognized() {
-        let now = Timestamp::UNIX_EPOCH;
-        assert_eq!(
-            parse_time_value("not-a-time", now).unwrap_err(),
-            ParseError::UnrecognizedValue("not-a-time".to_string())
-        );
-    }
-
-    #[test]
-    fn value_epoch_out_of_range() {
-        let now = Timestamp::UNIX_EPOCH;
-        assert_eq!(
-            parse_time_value(&i64::MAX.to_string(), now).unwrap_err(),
-            ParseError::OutOfRange
-        );
-    }
-
-    #[test]
-    fn component_out_of_range_reports_the_offending_unit() {
-        let err = parse_duration("999999999999999999999y").unwrap_err();
-        assert_eq!(
-            err,
-            ParseError::ComponentOutOfRange {
-                component: "year",
-                input: "999999999999999999999".to_string(),
-            }
-        );
+    #[rstest]
+    // Digits alone overflow i64, failing before the `Span` setter runs.
+    #[case::digits_exceed_i64(
+        "999999999999999999999y",
+        ParseError::ComponentOutOfRange {
+            component: "year",
+            input: "999999999999999999999".to_string(),
+        }
+    )]
+    // Digits fit i64 but exceed the `Span` type's per-unit bound.
+    #[case::digits_exceed_span_bound(
+        "20000y",
+        ParseError::ComponentOutOfRange {
+            component: "year",
+            input: "20000".to_string(),
+        }
+    )]
+    fn component_out_of_range_reports_the_offending_unit(
+        #[case] input: &str,
+        #[case] expected: ParseError,
+    ) {
+        check!(parse_duration(input).unwrap_err() == expected);
     }
 }
 
