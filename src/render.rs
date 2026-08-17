@@ -6,6 +6,11 @@ use axum::http::{StatusCode, header};
 use axum::response::IntoResponse;
 use chrono::{DateTime, Utc};
 use std::io::Cursor;
+use std::sync::LazyLock;
+
+/// Shared rasterizer, built once. Loading system fonts is too expensive to
+/// repeat per request.
+static RASTERIZER: LazyLock<Rasterizer> = LazyLock::new(Rasterizer::new);
 
 /// Output format for rendered time banners.
 #[derive(Debug, Clone)]
@@ -46,8 +51,7 @@ pub fn handle_rasterize(data: String, format: &OutputFormat) -> Result<Bytes, Ti
     match format {
         OutputFormat::Svg => Ok(Bytes::from(data)),
         OutputFormat::Png => {
-            let renderer = Rasterizer::new();
-            let raw_image = renderer.render(data.into_bytes()).map_err(|err| {
+            let raw_image = RASTERIZER.render(data.into_bytes()).map_err(|err| {
                 TimeBannerError::RasterizeError(
                     err.message.unwrap_or_else(|| "Unknown error".to_string()),
                 )

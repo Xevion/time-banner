@@ -7,18 +7,16 @@ use timeago::Formatter;
 
 use crate::render::OutputFormat;
 
-/// Global Tera template engine instance.
+/// Global Tera template engine instance. Templates are compiled into the
+/// binary, so there is no filesystem path to resolve at startup.
 static TEMPLATES: LazyLock<Tera> = LazyLock::new(|| {
-    let template_pattern = if cfg!(debug_assertions) {
-        // Development: templates are in src/templates
-        "src/templates/**/*.{svg,html}"
-    } else {
-        // Production: templates are in /usr/src/app/templates (relative to working dir)
-        "templates/**/*.{svg,html}"
-    };
-
     let mut tera = Tera::default();
-    if let Err(e) = tera.load_from_glob(template_pattern) {
+    let sources = [
+        ("basic.svg", include_str!("templates/basic.svg")),
+        ("clock.svg", include_str!("templates/clock.svg")),
+        ("index.html", include_str!("templates/index.html")),
+    ];
+    if let Err(e) = tera.add_raw_templates(sources) {
         panic!("Template parsing error(s): {}", e);
     }
 

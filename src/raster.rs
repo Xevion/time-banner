@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use resvg::usvg::fontdb;
 use resvg::{tiny_skia, usvg};
 
@@ -18,11 +20,12 @@ impl std::fmt::Display for RenderError {
 }
 
 pub struct Rasterizer {
-    font_db: fontdb::Database,
+    font_db: Arc<fontdb::Database>,
 }
 
 impl Rasterizer {
-    /// Creates a new rasterizer and loads available fonts.
+    /// Creates a new rasterizer and loads available fonts. Expensive (scans
+    /// system font directories); build once and reuse across requests.
     pub fn new() -> Self {
         let mut fontdb = fontdb::Database::new();
         fontdb.load_system_fonts();
@@ -32,14 +35,16 @@ impl Rasterizer {
             "fonts"
         });
 
-        Self { font_db: fontdb }
+        Self {
+            font_db: Arc::new(fontdb),
+        }
     }
 
     /// Converts SVG data to PNG.
     pub fn render(&self, svg_data: Vec<u8>) -> Result<Vec<u8>, RenderError> {
         let tree = {
             let opt = usvg::Options {
-                fontdb: std::sync::Arc::new(self.font_db.clone()),
+                fontdb: self.font_db.clone(),
                 ..Default::default()
             };
             usvg::Tree::from_data(&svg_data, &opt).map_err(|_| RenderError {

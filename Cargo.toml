@@ -16,7 +16,6 @@ tokio = { version = "1.46", default-features = false, features = ["rt-multi-thre
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 dotenvy = "0.15.7"
-tera = { version = "2", features = ["glob_fs"] }
 timeago = "0.6"
 phf = { version = "0.14", default-features = false }
 chrono = "0.4.41"
@@ -25,6 +24,7 @@ ico = "0.5"
 thiserror = "2.0"
 figment = { version = "0.10", features = ["env"] }
 tower-http = { version = "0.7", features = ["trace", "timeout", "compression-full"] }
+tera = "2"
 
 [build-dependencies]
 chrono = "0.4.41"
