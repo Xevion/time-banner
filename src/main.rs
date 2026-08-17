@@ -4,11 +4,15 @@ use crate::routes::{
     absolute_handler, fallback_handler, favicon_handler, favicon_png_handler, implicit_handler,
     index_handler, relative_handler,
 };
-use axum::{http::HeaderValue, response::Response, routing::get, Router};
+use axum::{Router, http::HeaderValue, response::Response, routing::get};
 use config::Configuration;
 use dotenvy::dotenv;
+use tower_http::compression::CompressionLayer;
+use tower_http::trace::TraceLayer;
+use tracing_subscriber::EnvFilter;
 
 mod abbr_tz;
+mod client_ip;
 mod config;
 mod duration;
 mod error;
@@ -24,17 +28,27 @@ async fn main() {
     #[cfg(debug_assertions)]
     dotenv().ok();
 
-    // Envy uses our Configuration struct to parse environment variables
-    let config = envy::from_env::<Configuration>().expect("Failed to parse environment variables");
+    let config = Configuration::load();
 
-    // Initialize tracing
-    tracing_subscriber::fmt()
-        // With the log_level from our config
-        .with_max_level(config.log_level())
-        .init();
+    // Initialize tracing with RUST_LOG support, falling back to config-based level
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new(config.log_level().to_string()));
+
+    if config.is_production() {
+        tracing_subscriber::fmt()
+            .json()
+            .with_env_filter(env_filter)
+            .init();
+    } else {
+        tracing_subscriber::fmt()
+            .compact()
+            .with_env_filter(env_filter)
+            .init();
+    }
 
     let app = Router::new()
         .route("/", get(index_handler))
+        .route("/health", get(|| async { axum::http::StatusCode::OK }))
         .route("/favicon.ico", get(favicon_handler))
         .route("/favicon.png", get(favicon_png_handler))
         .route("/{path}", get(implicit_handler))
@@ -43,6 +57,14 @@ async fn main() {
         .route("/absolute/{path}", get(absolute_handler))
         .route("/abs/{path}", get(absolute_handler))
         .fallback(fallback_handler)
+        .layer((
+            TraceLayer::new_for_http(),
+            CompressionLayer::new()
+                .zstd(true)
+                .br(true)
+                .gzip(true)
+                .quality(tower_http::CompressionLevel::Fastest),
+        ))
         .layer(axum::middleware::map_response(add_server_header));
 
     let addr = SocketAddr::from((config.socket_addr(), config.port));

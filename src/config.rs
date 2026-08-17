@@ -32,6 +32,16 @@ fn default_env() -> Environment {
 }
 
 impl Configuration {
+    /// Loads configuration from environment variables using figment.
+    pub fn load() -> Self {
+        use figment::{Figment, providers::Env};
+
+        Figment::new()
+            .merge(Env::raw())
+            .extract()
+            .expect("Failed to parse configuration")
+    }
+
     /// Returns the socket address to bind to based on environment.
     ///
     /// - Production: 0.0.0.0 (all interfaces)
@@ -68,5 +78,10 @@ impl Configuration {
             Environment::Production => Level::INFO,
             Environment::Development => Level::DEBUG,
         }
+    }
+
+    /// Returns true if the application is running in production.
+    pub fn is_production(&self) -> bool {
+        matches!(self.env, Environment::Production)
     }
 }

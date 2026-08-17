@@ -9,10 +9,10 @@ pub struct RenderError {
 
 impl std::fmt::Display for RenderError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        if self.message.is_none() {
-            write!(f, "RenderError")
+        if let Some(msg) = &self.message {
+            write!(f, "RenderError: {}", msg)
         } else {
-            write!(f, "RenderError: {}", self.message.as_ref().unwrap())
+            write!(f, "RenderError")
         }
     }
 }
@@ -42,14 +42,9 @@ impl Rasterizer {
                 fontdb: std::sync::Arc::new(self.font_db.clone()),
                 ..Default::default()
             };
-            let tree_result = usvg::Tree::from_data(&svg_data, &opt);
-            if tree_result.is_err() {
-                return Err(RenderError {
-                    message: Some("Failed to parse".to_string()),
-                });
-            }
-
-            tree_result.unwrap()
+            usvg::Tree::from_data(&svg_data, &opt).map_err(|_| RenderError {
+                message: Some("Failed to parse".to_string()),
+            })?
         };
 
         let pixmap_size = tree.size().to_int_size();
