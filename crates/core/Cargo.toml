@@ -11,13 +11,12 @@ repository.workspace = true
 name = "time_banner_core"
 
 [dependencies]
-chrono = "0.4.41"
 regex = "1.11.1"
 phf = { version = "0.14", default-features = false }
 thiserror = "2.0"
+jiff = { version = "0.2.35", features = ["tzdb-bundle-always"] }
 
 [build-dependencies]
-chrono = "0.4.41"
 regex = "1.11.1"
 phf = { version = "0.14", default-features = false }
 phf_codegen = "0.14"

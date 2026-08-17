@@ -1,29 +1,15 @@
 //! Human-readable duration parsing with support for mixed time units.
 //!
-//! Parses strings like "1y2mon3w4d5h6m7s", "+1year", or "-3h30m" into chrono Duration objects.
-//! Time units can appear in any order and use various abbreviations.
+//! Parses strings like "1y2mon3w4d5h6m7s", "+1year", or "-3h30m" into a
+//! `jiff::Span`. Time units can appear in any order and use various
+//! abbreviations.
 
 use std::sync::LazyLock;
 
-use chrono::{DateTime, Duration, Utc};
+use jiff::{Span, Timestamp, ToSpan};
 use regex::Regex;
 
 use crate::error::ParseError;
-
-/// Extends chrono::Duration with month support using approximate calendar math.
-pub trait Months {
-    fn months(count: i32) -> Self;
-}
-
-impl Months for Duration {
-    /// Creates a duration representing the given number of months.
-    /// Uses 365.25/12 ≈ 30.44 days per month for approximation.
-    fn months(count: i32) -> Self {
-        Duration::milliseconds(
-            (Duration::days(1).num_milliseconds() as f64 * (365.25f64 / 12f64)) as i64,
-        ) * count
-    }
-}
 
 /// Regex pattern matching duration strings with flexible ordering and abbreviations.
 ///
@@ -52,135 +38,56 @@ static FULL_RELATIVE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 
-/// Parses a human-readable duration string into a chrono Duration.
+/// Parses a human-readable duration string into a `Span`.
 ///
 /// Examples:
-/// - `"1y2d"` → 1 year + 2 days  
+/// - `"1y2d"` → 1 year + 2 days
 /// - `"+3h30m"` → +3.5 hours
 /// - `"-1week"` → -7 days
-/// - `"2months4days"` → ~2.03 months
+/// - `"2months4days"` → 2 months + 4 days
 ///
-/// Years include leap year compensation (+6 hours per year).
-/// Empty strings return zero duration.
-pub fn parse_duration(str: &str) -> Result<Duration, String> {
+/// Units are kept symbolic (a "year" is not resolved to a fixed number of
+/// seconds); resolving them against a reference instant happens in
+/// `parse_time_value`. Empty strings return a zero span.
+pub fn parse_duration(str: &str) -> Result<Span, ParseError> {
     let capture = FULL_RELATIVE_PATTERN.captures(str).unwrap();
-    let mut value = Duration::zero();
 
-    if let Some(raw_year) = capture.name("year") {
-        value += match raw_year.as_str().parse::<i64>() {
-            Ok(year) => {
-                Duration::days(year * 365)
-                    + (if year > 0 {
-                        Duration::hours(6) * year as i32 // Leap year compensation
-                    } else {
-                        Duration::zero()
-                    })
-            }
-            Err(e) => {
-                return Err(format!(
-                    "Could not parse year from {} ({})",
-                    raw_year.as_str(),
+    let sign: i64 = match capture.name("sign").map(|m| m.as_str()) {
+        None | Some("+") => 1,
+        Some("-") => -1,
+        Some(other) => return Err(ParseError(format!("Could not parse sign from {}", other))),
+    };
+
+    let unit = |name: &str| -> Result<i64, ParseError> {
+        match capture.name(name) {
+            None => Ok(0),
+            Some(m) => m.as_str().parse::<i64>().map(|n| n * sign).map_err(|e| {
+                ParseError(format!(
+                    "Could not parse {} from {} ({})",
+                    name,
+                    m.as_str(),
                     e
-                ));
-            }
-        };
-    }
+                ))
+            }),
+        }
+    };
 
-    if let Some(raw_month) = capture.name("month") {
-        value += match raw_month.as_str().parse::<i32>() {
-            Ok(month) => Duration::months(month),
-            Err(e) => {
-                return Err(format!(
-                    "Could not parse month from {} ({})",
-                    raw_month.as_str(),
-                    e
-                ));
-            }
-        };
-    }
-
-    if let Some(raw_week) = capture.name("week") {
-        value += match raw_week.as_str().parse::<i64>() {
-            Ok(week) => Duration::days(7) * week as i32,
-            Err(e) => {
-                return Err(format!(
-                    "Could not parse week from {} ({})",
-                    raw_week.as_str(),
-                    e
-                ));
-            }
-        };
-    }
-
-    if let Some(raw_day) = capture.name("day") {
-        value += match raw_day.as_str().parse::<i64>() {
-            Ok(day) => Duration::days(day),
-            Err(e) => {
-                return Err(format!(
-                    "Could not parse day from {} ({})",
-                    raw_day.as_str(),
-                    e
-                ));
-            }
-        };
-    }
-
-    if let Some(raw_hour) = capture.name("hour") {
-        value += match raw_hour.as_str().parse::<i64>() {
-            Ok(hour) => Duration::hours(hour),
-            Err(e) => {
-                return Err(format!(
-                    "Could not parse hour from {} ({})",
-                    raw_hour.as_str(),
-                    e
-                ));
-            }
-        };
-    }
-
-    if let Some(raw_minute) = capture.name("minute") {
-        value += match raw_minute.as_str().parse::<i64>() {
-            Ok(minute) => Duration::minutes(minute),
-            Err(e) => {
-                return Err(format!(
-                    "Could not parse minute from {} ({})",
-                    raw_minute.as_str(),
-                    e
-                ));
-            }
-        };
-    }
-
-    if let Some(raw_second) = capture.name("second") {
-        value += match raw_second.as_str().parse::<i64>() {
-            Ok(second) => Duration::seconds(second),
-            Err(e) => {
-                return Err(format!(
-                    "Could not parse second from {} ({})",
-                    raw_second.as_str(),
-                    e
-                ));
-            }
-        };
-    }
-
-    if let Some(raw_sign) = capture.name("sign") {
-        match raw_sign.as_str() {
-            "-" => value = -value,
-            "+" => (),
-            _ => return Err(format!("Could not parse sign from {}", raw_sign.as_str())),
-        };
-    }
-
-    Ok(value)
+    Ok(Span::new()
+        .years(unit("year")?)
+        .months(unit("month")?)
+        .weeks(unit("week")?)
+        .days(unit("day")?)
+        .hours(unit("hour")?)
+        .minutes(unit("minute")?)
+        .seconds(unit("second")?))
 }
 
-/// Converts Unix epoch timestamp to UTC DateTime.
-pub fn parse_epoch_into_datetime(epoch: i64) -> Option<DateTime<Utc>> {
-    DateTime::from_timestamp(epoch, 0)
+/// Converts a Unix epoch timestamp to a `Timestamp`.
+pub fn parse_epoch_into_timestamp(epoch: i64) -> Option<Timestamp> {
+    Timestamp::from_second(epoch).ok()
 }
 
-/// Parses various time value formats into a UTC datetime.
+/// Parses various time value formats into a `Timestamp`.
 ///
 /// Supports:
 /// - Relative offsets: "+3600", "-1800" (seconds from `now`)
@@ -188,28 +95,29 @@ pub fn parse_epoch_into_datetime(epoch: i64) -> Option<DateTime<Utc>> {
 /// - Epoch timestamps: "1752170474" (Unix timestamp)
 ///
 /// `now` is the reference instant relative values are computed against.
-pub fn parse_time_value(raw_time: &str, now: DateTime<Utc>) -> Result<DateTime<Utc>, ParseError> {
+pub fn parse_time_value(raw_time: &str, now: Timestamp) -> Result<Timestamp, ParseError> {
     // Handle relative time values (starting with + or -, or duration strings like "1y2d")
     if raw_time.starts_with('+') || raw_time.starts_with('-') {
-        // Try parsing as simple offset seconds first
-        if let Ok(offset_seconds) = raw_time.parse::<i64>() {
-            return Ok(now + Duration::seconds(offset_seconds));
-        }
+        let span = if let Ok(offset_seconds) = raw_time.parse::<i64>() {
+            offset_seconds.seconds()
+        } else {
+            parse_duration(raw_time)?
+        };
 
-        // Try parsing as duration string (e.g., "+1y2d", "-3h30m")
-        if let Ok(duration) = parse_duration(raw_time) {
-            return Ok(now + duration);
-        }
-
-        return Err(ParseError(format!(
-            "Could not parse relative time: {}",
-            raw_time
-        )));
+        // Calendar units (years, months, ...) need a reference date to
+        // resolve, so route through a UTC-zoned view of `now`.
+        let zoned = now
+            .in_tz("UTC")
+            .map_err(|e| ParseError(format!("Could not resolve UTC timezone: {}", e)))?;
+        let result = zoned
+            .checked_add(span)
+            .map_err(|e| ParseError(format!("Could not apply relative time: {}", e)))?;
+        return Ok(result.timestamp());
     }
 
     // Try to parse as epoch timestamp
     if let Ok(epoch) = raw_time.parse::<i64>() {
-        return parse_epoch_into_datetime(epoch)
+        return parse_epoch_into_timestamp(epoch)
             .ok_or_else(|| ParseError("Invalid timestamp".to_string()));
     }
 
@@ -221,107 +129,98 @@ pub fn parse_time_value(raw_time: &str, now: DateTime<Utc>) -> Result<DateTime<U
 
 #[cfg(test)]
 mod tests {
-    use crate::duration::{Months, parse_duration};
-    use chrono::Duration;
+    use crate::duration::parse_duration;
+    use jiff::{Span, ToSpan};
 
     #[test]
     fn parse_empty() {
-        assert_eq!(parse_duration(""), Ok(Duration::zero()));
-        assert_eq!(parse_duration(" "), Ok(Duration::zero()));
-        assert_eq!(parse_duration("  "), Ok(Duration::zero()));
+        assert_eq!(parse_duration("").unwrap().fieldwise(), Span::new());
+        assert_eq!(parse_duration(" ").unwrap().fieldwise(), Span::new());
+        assert_eq!(parse_duration("  ").unwrap().fieldwise(), Span::new());
     }
 
     #[test]
     fn parse_composite() {
         assert_eq!(
-            parse_duration("1y2mon3w4d5h6m7s"),
-            Ok(Duration::days(365)
-                + Duration::hours(6) // leap year compensation
-                + Duration::months(2)
-                + Duration::weeks(3)
-                + Duration::days(4)
-                + Duration::hours(5)
-                + Duration::minutes(6)
-                + Duration::seconds(7)),
-            "1y2mon3w4d5h6m7s"
+            parse_duration("1y2mon3w4d5h6m7s").unwrap().fieldwise(),
+            1.years()
+                .months(2)
+                .weeks(3)
+                .days(4)
+                .hours(5)
+                .minutes(6)
+                .seconds(7)
         );
         assert_eq!(
-            parse_duration("19year33weeks4d9min"),
-            Ok(Duration::days(365 * 19)
-                + Duration::hours(6 * 19)
-                + Duration::days(33 * 7 + 4)
-                + Duration::minutes(9)),
-            "19year33weeks4d9min"
+            parse_duration("19year33weeks4d9min").unwrap().fieldwise(),
+            19.years().weeks(33).days(4).minutes(9)
         );
     }
 
     #[test]
     fn parse_year() {
-        assert_eq!(
-            parse_duration("1y"),
-            Ok(Duration::days(365) + Duration::hours(6))
-        );
-        assert_eq!(
-            parse_duration("2year"),
-            Ok(Duration::days(365 * 2) + Duration::hours(6 * 2))
-        );
-        assert_eq!(
-            parse_duration("144years"),
-            Ok(Duration::days(365 * 144) + Duration::hours(6 * 144))
-        );
+        assert_eq!(parse_duration("1y").unwrap().fieldwise(), 1.years());
+        assert_eq!(parse_duration("2year").unwrap().fieldwise(), 2.years());
+        assert_eq!(parse_duration("144years").unwrap().fieldwise(), 144.years());
     }
 
     #[test]
     fn parse_month() {
-        assert_eq!(Duration::zero(), parse_duration("0mon").unwrap());
-        assert_eq!(Duration::months(3), parse_duration("3mon").unwrap());
-        assert_eq!(Duration::months(-14), parse_duration("-14mon").unwrap());
-        assert_eq!(Duration::months(144), parse_duration("+144months").unwrap());
+        assert_eq!(parse_duration("0mon").unwrap().fieldwise(), 0.months());
+        assert_eq!(parse_duration("3mon").unwrap().fieldwise(), 3.months());
+        assert_eq!(
+            parse_duration("-14mon").unwrap().fieldwise(),
+            (-14).months()
+        );
+        assert_eq!(
+            parse_duration("+144months").unwrap().fieldwise(),
+            144.months()
+        );
     }
 
     #[test]
     fn parse_week() {
-        assert_eq!(Duration::zero(), parse_duration("0w").unwrap());
-        assert_eq!(Duration::weeks(7), parse_duration("7w").unwrap());
-        assert_eq!(Duration::weeks(19), parse_duration("19week").unwrap());
-        assert_eq!(Duration::weeks(433), parse_duration("433weeks").unwrap());
+        assert_eq!(parse_duration("0w").unwrap().fieldwise(), 0.weeks());
+        assert_eq!(parse_duration("7w").unwrap().fieldwise(), 7.weeks());
+        assert_eq!(parse_duration("19week").unwrap().fieldwise(), 19.weeks());
+        assert_eq!(parse_duration("433weeks").unwrap().fieldwise(), 433.weeks());
     }
 
     #[test]
     fn parse_day() {
-        assert_eq!(Duration::zero(), parse_duration("0d").unwrap());
-        assert_eq!(Duration::days(9), parse_duration("9d").unwrap());
-        assert_eq!(Duration::days(43), parse_duration("43day").unwrap());
-        assert_eq!(Duration::days(969), parse_duration("969days").unwrap());
+        assert_eq!(parse_duration("0d").unwrap().fieldwise(), 0.days());
+        assert_eq!(parse_duration("9d").unwrap().fieldwise(), 9.days());
+        assert_eq!(parse_duration("43day").unwrap().fieldwise(), 43.days());
+        assert_eq!(parse_duration("969days").unwrap().fieldwise(), 969.days());
     }
 
     #[test]
     fn parse_hour() {
-        assert_eq!(Duration::zero(), parse_duration("0h").unwrap());
-        assert_eq!(Duration::hours(4), parse_duration("4h").unwrap());
-        assert_eq!(Duration::hours(150), parse_duration("150hour").unwrap());
-        assert_eq!(Duration::hours(777), parse_duration("777hours").unwrap());
+        assert_eq!(parse_duration("0h").unwrap().fieldwise(), 0.hours());
+        assert_eq!(parse_duration("4h").unwrap().fieldwise(), 4.hours());
+        assert_eq!(parse_duration("150hour").unwrap().fieldwise(), 150.hours());
+        assert_eq!(parse_duration("777hours").unwrap().fieldwise(), 777.hours());
     }
 
     #[test]
     fn parse_minute() {
-        assert_eq!(Duration::zero(), parse_duration("0m").unwrap());
-        assert_eq!(Duration::minutes(5), parse_duration("5m").unwrap());
-        assert_eq!(Duration::minutes(60), parse_duration("60min").unwrap());
+        assert_eq!(parse_duration("0m").unwrap().fieldwise(), 0.minutes());
+        assert_eq!(parse_duration("5m").unwrap().fieldwise(), 5.minutes());
+        assert_eq!(parse_duration("60min").unwrap().fieldwise(), 60.minutes());
         assert_eq!(
-            Duration::minutes(999),
-            parse_duration("999minutes").unwrap()
+            parse_duration("999minutes").unwrap().fieldwise(),
+            999.minutes()
         );
     }
 
     #[test]
     fn parse_second() {
-        assert_eq!(Duration::zero(), parse_duration("0s").unwrap());
-        assert_eq!(Duration::seconds(6), parse_duration("6s").unwrap());
-        assert_eq!(Duration::minutes(1), parse_duration("60sec").unwrap());
+        assert_eq!(parse_duration("0s").unwrap().fieldwise(), 0.seconds());
+        assert_eq!(parse_duration("6s").unwrap().fieldwise(), 6.seconds());
+        assert_eq!(parse_duration("60sec").unwrap().fieldwise(), 60.seconds());
         assert_eq!(
-            Duration::seconds(999),
-            parse_duration("999seconds").unwrap()
+            parse_duration("999seconds").unwrap().fieldwise(),
+            999.seconds()
         );
     }
 }

@@ -1,6 +1,6 @@
 use std::sync::LazyLock;
 
-use chrono::{DateTime, Timelike, Utc};
+use jiff::{Timestamp, tz::TimeZone};
 use serde::Serialize;
 use tera::{Context, Tera};
 use timeago::Formatter;
@@ -29,7 +29,7 @@ static TEMPLATES: LazyLock<Tera> = LazyLock::new(|| {
 pub enum OutputForm {
     /// Relative display: "2 hours ago", "in 3 days"
     Relative,
-    /// Absolute display: "2025-01-17 14:30:00 UTC"  
+    /// Absolute display: "2025-01-17 14:30:00 UTC"
     Absolute,
     /// Clock display: analog clock with hands showing the time
     Clock,
@@ -45,7 +45,7 @@ pub enum TzForm {
 
 /// Context passed to template renderer containing all necessary data.
 pub struct RenderContext {
-    pub value: DateTime<Utc>,
+    pub value: Timestamp,
     pub output_form: OutputForm,
     #[allow(dead_code)]
     pub output_format: OutputFormat,
@@ -56,16 +56,17 @@ pub struct RenderContext {
     #[allow(dead_code)]
     pub format: Option<String>,
     /// Reference instant relative values are computed against.
-    pub now: DateTime<Utc>,
+    pub now: Timestamp,
 }
 
 /// Calculates clock hand positions for a given time.
 ///
 /// Returns (hour_x, hour_y, minute_x, minute_y) coordinates for SVG rendering.
 /// Clock center is at (16, 16) with appropriate hand lengths for a 32x32 favicon.
-fn calculate_clock_hands(time: DateTime<Utc>) -> (f64, f64, f64, f64) {
-    let hour = time.hour() as f64;
-    let minute = time.minute() as f64;
+fn calculate_clock_hands(time: Timestamp) -> (f64, f64, f64, f64) {
+    let zoned = time.to_zoned(TimeZone::UTC);
+    let hour = zoned.hour() as f64;
+    let minute = zoned.minute() as f64;
 
     // Calculate angles (12 o'clock = 0°, clockwise)
     let hour_angle = ((hour % 12.0) + minute / 60.0) * 30.0; // 30° per hour
@@ -119,18 +120,17 @@ pub fn render_template(context: RenderContext) -> Result<String, tera::Error> {
 
     match context.output_form {
         OutputForm::Relative => {
+            let elapsed = context.value.duration_since(context.now).unsigned_abs();
             let mut formatter = Formatter::new();
-            let text = if context.value > context.now {
+            if context.value > context.now {
                 formatter.ago("from now");
-                formatter.convert_chrono(context.now, context.value)
-            } else {
-                formatter.convert_chrono(context.value, context.now)
-            };
+            }
+            let text = formatter.convert(elapsed);
             insert_basic_text(&mut template_context, &text);
             TEMPLATES.render("basic.svg", &template_context)
         }
         OutputForm::Absolute => {
-            insert_basic_text(&mut template_context, &context.value.to_rfc3339());
+            insert_basic_text(&mut template_context, &context.value.to_string());
             TEMPLATES.render("basic.svg", &template_context)
         }
         OutputForm::Clock => {
@@ -160,8 +160,8 @@ struct Example {
 }
 
 /// Renders the index page, with live example image URLs computed from `now`.
-pub fn render_index_page(now: DateTime<Utc>) -> Result<String, tera::Error> {
-    let epoch = now.timestamp();
+pub fn render_index_page(now: Timestamp) -> Result<String, tera::Error> {
+    let epoch = now.as_second();
 
     let examples = vec![
         Example {
@@ -194,17 +194,18 @@ pub fn render_index_page(now: DateTime<Utc>) -> Result<String, tera::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jiff::ToSpan;
 
     #[test]
     fn index_page_renders() {
-        let html = render_index_page(Utc::now()).expect("index page should render");
+        let html = render_index_page(Timestamp::now()).expect("index page should render");
         assert!(html.contains("time-banner"));
         assert!(html.contains("/favicon.ico"));
     }
 
     #[test]
     fn basic_svg_declares_explicit_size() {
-        let now = Utc::now();
+        let now = Timestamp::now();
         let svg = render_template(RenderContext {
             value: now,
             output_form: OutputForm::Absolute,
@@ -220,8 +221,8 @@ mod tests {
 
     #[test]
     fn future_relative_time_does_not_render_unknown() {
-        let now = Utc::now();
-        let future = now + chrono::Duration::hours(1);
+        let now = Timestamp::now();
+        let future = now.checked_add(1.hour()).unwrap();
         let svg = render_template(RenderContext {
             value: future,
             output_form: OutputForm::Relative,

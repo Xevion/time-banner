@@ -1,7 +1,7 @@
 use std::io::Cursor;
 use std::sync::LazyLock;
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 
 use crate::error::RenderError;
 use crate::raster::Rasterizer;
@@ -57,8 +57,8 @@ pub fn handle_rasterize(data: String, format: &OutputFormat) -> Result<Vec<u8>, 
 ///
 /// `now` is the reference instant relative values are computed against.
 pub fn render_time(
-    time: DateTime<Utc>,
-    now: DateTime<Utc>,
+    time: Timestamp,
+    now: Timestamp,
     output_form: OutputForm,
     output_format: OutputFormat,
 ) -> Result<Vec<u8>, RenderError> {
@@ -78,7 +78,7 @@ pub fn render_time(
 }
 
 /// Generates PNG bytes for the favicon clock.
-pub fn generate_favicon_png_bytes(time: DateTime<Utc>) -> Result<Vec<u8>, RenderError> {
+pub fn generate_favicon_png_bytes(time: Timestamp) -> Result<Vec<u8>, RenderError> {
     let context = RenderContext {
         value: time,
         output_form: OutputForm::Clock,
