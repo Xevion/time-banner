@@ -16,16 +16,14 @@ static TEMPLATES: LazyLock<Tera> = LazyLock::new(|| {
         "templates/**/*.svg"
     };
 
-    match Tera::new(template_pattern) {
-        Ok(t) => {
-            let names: Vec<&str> = t.get_template_names().collect();
-            tracing::info!("{} templates found ([{}]).", names.len(), names.join(", "));
-            t
-        }
-        Err(e) => {
-            panic!("Template parsing error(s): {}", e);
-        }
+    let mut tera = Tera::default();
+    if let Err(e) = tera.load_from_glob(template_pattern) {
+        panic!("Template parsing error(s): {}", e);
     }
+
+    let names: Vec<&str> = tera.get_template_names().collect();
+    tracing::info!("{} templates found ([{}]).", names.len(), names.join(", "));
+    tera
 });
 
 /// Display format for time values.
