@@ -27,7 +27,6 @@ RUN cargo build --release --workspace
 # Build with the real application code
 RUN rm crates/core/src/lib.rs crates/render/src/lib.rs crates/server/src/main.rs
 COPY ./crates ./crates
-COPY ./fonts ./fonts
 RUN rm target/release/deps/time_banner* target/release/deps/libtime_banner*
 RUN cargo build --release --workspace
 
@@ -53,10 +52,9 @@ RUN addgroup -g $GID -S $APP_USER \
     && adduser -u $UID -D -S -G $APP_USER $APP_USER \
     && mkdir -p ${APP}
 
-# Copy application files. Templates are compiled into the binary; only the
-# fonts, which are loaded at runtime, need to ship alongside it.
+# Copy the binary. Templates and fonts are compiled into it, so nothing else
+# needs to ship alongside it.
 COPY --from=builder --chown=$APP_USER:$APP_USER /usr/src/time-banner/target/release/time-banner ${APP}/time-banner
-COPY --from=builder --chown=$APP_USER:$APP_USER /usr/src/time-banner/fonts ${APP}/fonts
 
 # Set proper permissions
 RUN chmod +x ${APP}/time-banner

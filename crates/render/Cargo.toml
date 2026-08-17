@@ -16,6 +16,7 @@ tera = "2"
 timeago = "0.6"
 serde = { version = "1.0", features = ["derive"] }
 ico = "0.5"
+png = "0.18"
 thiserror = "2.0"
 tracing = "0.1"
 jiff = "0.2.35"

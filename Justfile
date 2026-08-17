@@ -38,7 +38,7 @@ docker-build:
 
 # Run benchmarks
 bench:
-    cargo bench --workspace
+    cargo bench --workspace --benches
 
 # Security audit
 audit:

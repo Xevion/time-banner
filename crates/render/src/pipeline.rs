@@ -7,8 +7,7 @@ use crate::error::RenderError;
 use crate::raster::Rasterizer;
 use crate::template::{OutputForm, RenderContext, render_template};
 
-/// Shared rasterizer, built once. Loading system fonts is too expensive to
-/// repeat per request.
+/// Shared rasterizer, built once and reused across requests.
 static RASTERIZER: LazyLock<Rasterizer> = LazyLock::new(Rasterizer::new);
 
 /// Output format for rendered time banners.

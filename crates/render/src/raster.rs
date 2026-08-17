@@ -5,6 +5,10 @@ use resvg::{tiny_skia, usvg};
 
 use crate::error::RenderError;
 
+const ARIAL: &[u8] = include_bytes!("../fonts/arial.ttf");
+const INTER: &[u8] = include_bytes!("../fonts/inter.ttf");
+const ROBOTO_MONO: &[u8] = include_bytes!("../fonts/RobotoMono.ttf");
+
 pub struct Rasterizer {
     font_db: Arc<fontdb::Database>,
 }
@@ -16,29 +20,32 @@ impl Default for Rasterizer {
 }
 
 impl Rasterizer {
-    /// Creates a new rasterizer and loads available fonts. Expensive (scans
-    /// system font directories); build once and reuse across requests.
+    /// Creates a new rasterizer with the bundled fonts. System fonts are
+    /// never loaded: rendering must be identical across machines, and the
+    /// templates only ever reference these 3 families.
     pub fn new() -> Self {
         let mut fontdb = fontdb::Database::new();
-        fontdb.load_system_fonts();
-        fontdb.load_fonts_dir("fonts");
+        fontdb.load_font_data(ARIAL.to_vec());
+        fontdb.load_font_data(INTER.to_vec());
+        fontdb.load_font_data(ROBOTO_MONO.to_vec());
 
         Self {
             font_db: Arc::new(fontdb),
         }
     }
 
-    /// Converts SVG data to PNG.
-    pub fn render(&self, svg_data: Vec<u8>) -> Result<Vec<u8>, RenderError> {
-        let tree = {
-            let opt = usvg::Options {
-                fontdb: self.font_db.clone(),
-                ..Default::default()
-            };
-            usvg::Tree::from_data(&svg_data, &opt)
-                .map_err(|e| RenderError::Rasterize(format!("Failed to parse SVG: {}", e)))?
+    /// Parses SVG source into a usvg tree, resolving fonts against the bundle.
+    pub fn parse(&self, svg_data: &[u8]) -> Result<usvg::Tree, RenderError> {
+        let opt = usvg::Options {
+            fontdb: self.font_db.clone(),
+            ..Default::default()
         };
+        usvg::Tree::from_data(svg_data, &opt)
+            .map_err(|e| RenderError::Rasterize(format!("Failed to parse SVG: {}", e)))
+    }
 
+    /// Rasterizes a parsed tree, applying the banner's fixed 10% zoom-out.
+    pub fn rasterize(&self, tree: &usvg::Tree) -> tiny_skia::Pixmap {
         let pixmap_size = tree.size().to_int_size();
         let mut pixmap = tiny_skia::Pixmap::new(pixmap_size.width(), pixmap_size.height()).unwrap();
 
@@ -52,10 +59,38 @@ impl Rasterizer {
             .post_scale(zoom, zoom)
             .post_translate(center_x, center_y);
 
-        resvg::render(&tree, render_ts, &mut pixmap.as_mut());
-
+        resvg::render(tree, render_ts, &mut pixmap.as_mut());
         pixmap
-            .encode_png()
-            .map_err(|e| RenderError::Rasterize(format!("Failed to encode PNG: {}", e)))
     }
+
+    /// Converts SVG data to PNG.
+    pub fn render(&self, svg_data: Vec<u8>) -> Result<Vec<u8>, RenderError> {
+        let tree = self.parse(&svg_data)?;
+        let pixmap = self.rasterize(&tree);
+        encode_png(pixmap)
+    }
+}
+
+/// Encodes a pixmap as PNG, favoring encode speed over file size: banners are
+/// small, mostly-flat images generated fresh per request, not archived.
+pub fn encode_png(pixmap: tiny_skia::Pixmap) -> Result<Vec<u8>, RenderError> {
+    let width = pixmap.width();
+    let height = pixmap.height();
+    let demultiplied = pixmap.take_demultiplied();
+
+    let mut data = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut data, width, height);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        encoder.set_compression(png::Compression::Fast);
+        let mut writer = encoder
+            .write_header()
+            .map_err(|e| RenderError::Rasterize(format!("Failed to encode PNG: {}", e)))?;
+        writer
+            .write_image_data(&demultiplied)
+            .map_err(|e| RenderError::Rasterize(format!("Failed to encode PNG: {}", e)))?;
+    }
+
+    Ok(data)
 }
