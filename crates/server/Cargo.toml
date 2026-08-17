@@ -25,6 +25,7 @@ thiserror = "2.0"
 figment = { version = "0.10", features = ["env"] }
 tower-http = { version = "0.7", features = ["trace", "timeout", "compression-full"] }
 jiff = "0.2.35"
+icu_locale = "2.3.0"
 
 [dev-dependencies]
 assert2.workspace = true

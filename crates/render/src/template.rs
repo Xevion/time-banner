@@ -1,11 +1,13 @@
 use std::sync::LazyLock;
 
-use jiff::{Timestamp, fmt::strtime, tz::TimeZone};
+use jiff::{Timestamp, tz::TimeZone};
 use serde::Serialize;
 use tera::{Context, Tera};
-use timeago::Formatter;
+use timeago::{BoxedLanguage, Formatter};
 
 use crate::error::RenderError;
+use crate::format::format_absolute;
+use crate::locale;
 use crate::pipeline::OutputFormat;
 
 /// Global Tera template engine instance. Templates are compiled into the
@@ -46,6 +48,12 @@ pub struct RenderContext {
     pub tz: TimeZone,
     /// Reference instant relative values are computed against.
     pub now: Timestamp,
+    /// `strftime` pattern for absolute output. `None` draws with
+    /// `ABSOLUTE_FORMAT`.
+    pub format: Option<String>,
+    /// Translation relative output renders words in. `None` draws in
+    /// English.
+    pub locale: Option<BoxedLanguage>,
 }
 
 /// A 2D point in the clock face's coordinate space.
@@ -110,9 +118,12 @@ fn insert_basic_text(template_context: &mut Context, text: &str) {
     template_context.insert("height", &format!("{:.0}", BASIC_HEIGHT));
 }
 
-/// `strftime` pattern absolute output is drawn with. `?format=` will make
-/// this the default rather than the only option.
+/// Default `strftime` pattern absolute output is drawn with, used when
+/// `?format=` is absent.
 const ABSOLUTE_FORMAT: &str = "%Y-%m-%d %H:%M:%S %Z";
+
+/// Largest expansion a `?format=` pattern may produce.
+const MAX_FORMAT_OUTPUT_BYTES: usize = 512;
 
 impl RenderContext {
     /// Renders this time value using the appropriate template.
@@ -126,7 +137,8 @@ impl RenderContext {
         let rendered = match self.output_form {
             OutputForm::Relative => {
                 let elapsed = self.value.duration_since(self.now).unsigned_abs();
-                let mut formatter = Formatter::new();
+                let lang = self.locale.unwrap_or_else(locale::default_language);
+                let mut formatter = Formatter::with_language(lang);
                 if self.value > self.now {
                     formatter.ago("from now");
                 }
@@ -136,8 +148,8 @@ impl RenderContext {
             }
             OutputForm::Absolute => {
                 let zoned = self.value.to_zoned(self.tz.clone());
-                let text = strtime::format(ABSOLUTE_FORMAT, &zoned)
-                    .map_err(|e| RenderError::template("time formatting failed", e))?;
+                let pattern = self.format.as_deref().unwrap_or(ABSOLUTE_FORMAT);
+                let text = format_absolute(&zoned, pattern, MAX_FORMAT_OUTPUT_BYTES)?;
                 insert_basic_text(&mut template_context, &text);
                 TEMPLATES.render("basic.svg", &template_context)
             }
@@ -223,6 +235,8 @@ mod tests {
             output_format: crate::pipeline::OutputFormat::Svg,
             tz: TimeZone::UTC,
             now,
+            format: None,
+            locale: None,
         }
     }
 
@@ -264,6 +278,8 @@ mod tests {
             output_format: crate::pipeline::OutputFormat::Svg,
             tz: chicago,
             now: value,
+            format: None,
+            locale: None,
         }
         .render_svg()
         .expect("basic.svg should render");
@@ -281,11 +297,53 @@ mod tests {
             output_format: crate::pipeline::OutputFormat::Svg,
             tz: TimeZone::fixed(jiff::tz::offset(-6)),
             now: value,
+            format: None,
+            locale: None,
         }
         .render_svg()
         .expect("basic.svg should render");
 
         assert!(svg.contains("2023-11-14 16:13:20 -06"));
+    }
+
+    #[test]
+    fn absolute_renders_a_custom_format() {
+        let value = fixed_instant();
+
+        let svg = RenderContext {
+            value,
+            output_form: OutputForm::Absolute,
+            output_format: crate::pipeline::OutputFormat::Svg,
+            tz: TimeZone::UTC,
+            now: value,
+            format: Some("%Y".to_string()),
+            locale: None,
+        }
+        .render_svg()
+        .expect("basic.svg should render");
+
+        assert!(svg.contains("2023"));
+        assert!(!svg.contains("2023-11-14"));
+    }
+
+    #[test]
+    fn relative_renders_in_the_resolved_locale() {
+        let now = Timestamp::now();
+        let past = now.checked_sub(1.hour()).unwrap();
+
+        let svg = RenderContext {
+            value: past,
+            output_form: OutputForm::Relative,
+            output_format: crate::pipeline::OutputFormat::Svg,
+            tz: TimeZone::UTC,
+            now,
+            format: None,
+            locale: crate::locale::language_for("fr"),
+        }
+        .render_svg()
+        .expect("basic.svg should render");
+
+        assert!(svg.contains("heure"));
     }
 
     #[test]

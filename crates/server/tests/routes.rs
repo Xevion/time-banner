@@ -213,6 +213,102 @@ async fn malformed_timezone_is_bad_request(router: Router) {
 
 #[rstest]
 #[tokio::test]
+async fn format_query_overrides_the_default_absolute_pattern(router: Router) {
+    let response = get(router, "/absolute/1700000000?format=%25Y").await;
+    check!(response.status() == StatusCode::OK);
+    check!(body_text(response).await.contains(">2023<"));
+}
+
+#[rstest]
+#[tokio::test]
+async fn invalid_format_directive_is_bad_request(router: Router) {
+    let response = get(router, "/absolute/1700000000?format=%25K").await;
+    check!(response.status() == StatusCode::BAD_REQUEST);
+}
+
+#[rstest]
+#[tokio::test]
+async fn oversized_format_string_is_payload_too_large(router: Router) {
+    let format: String = "%25Y".repeat(40); // decodes to 80 bytes, past the 64-byte input cap
+    let response = get(router, &format!("/absolute/1700000000?format={format}")).await;
+    check!(response.status() == StatusCode::PAYLOAD_TOO_LARGE);
+}
+
+#[rstest]
+#[tokio::test]
+async fn relative_renders_in_the_negotiated_locale(router: Router) {
+    let response = router
+        .oneshot(
+            Request::builder()
+                .uri("/relative/0?now=3600")
+                .header("Accept-Language", "fr")
+                .body(Body::empty())
+                .expect("valid request"),
+        )
+        .await
+        .expect("router is infallible");
+
+    check!(response.status() == StatusCode::OK);
+    check!(header_value(&response, "content-language") == "fr");
+    check!(header_value(&response, "vary") == "Accept-Language");
+    assert!(body_text(response).await.contains("heure"));
+}
+
+#[rstest]
+#[tokio::test]
+async fn locale_query_param_overrides_the_accept_language_header(router: Router) {
+    let response = router
+        .oneshot(
+            Request::builder()
+                .uri("/relative/0?now=1000000000&locale=de")
+                .header("Accept-Language", "fr")
+                .body(Body::empty())
+                .expect("valid request"),
+        )
+        .await
+        .expect("router is infallible");
+
+    check!(header_value(&response, "content-language") == "de");
+}
+
+#[rstest]
+#[tokio::test]
+async fn unsupported_locale_falls_back_to_english(router: Router) {
+    let response = router
+        .oneshot(
+            Request::builder()
+                .uri("/relative/0?now=1000000000")
+                .header("Accept-Language", "xx")
+                .body(Body::empty())
+                .expect("valid request"),
+        )
+        .await
+        .expect("router is infallible");
+
+    check!(header_value(&response, "content-language") == "en");
+}
+
+/// SPEC 7 scopes `Content-Language`/`Vary: Accept-Language` to the modes
+/// that actually render words; `absolute` doesn't, unlike `Timezone`, which
+/// every response carries regardless of mode.
+#[rstest]
+#[tokio::test]
+async fn absolute_output_carries_no_locale_headers(router: Router) {
+    let response = get(router, "/absolute/1700000000").await;
+    check!(response.headers().get("content-language").is_none());
+    // `Vary: Timezone` is global (added by `resolve_request` for every
+    // response); only `Accept-Language` is scoped to word-rendering modes.
+    check!(
+        !response
+            .headers()
+            .get_all("vary")
+            .iter()
+            .any(|v| v == "Accept-Language")
+    );
+}
+
+#[rstest]
+#[tokio::test]
 async fn favicon_hands_follow_the_resolved_timezone(router: Router) {
     let utc = get_as_client(router.clone(), "/favicon.png?now=1700000000").await;
     let tokyo = get_as_client(router, "/favicon.png?now=1700000000&tz=Asia/Tokyo").await;

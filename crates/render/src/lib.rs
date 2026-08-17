@@ -1,6 +1,8 @@
 //! Templating, rasterization, and encoding pipeline for time-banner.
 
 pub mod error;
+mod format;
+pub mod locale;
 pub mod pipeline;
 pub mod raster;
 pub mod template;

@@ -3,7 +3,7 @@ use crate::error::TimeBannerError;
 use crate::resolve::Resolution;
 use crate::utils::parse_path;
 use axum::extract::Path;
-use axum::http::{StatusCode, header};
+use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{Html, IntoResponse};
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
@@ -46,6 +46,13 @@ async fn banner(
     let output_format = OutputFormat::from(extension);
     let mime_type = output_format.mime_type();
 
+    // Only `relative` renders words today; `Content-Language` and
+    // `Vary: Accept-Language` are scoped to responses that actually depend
+    // on the negotiated locale, unlike `Timezone`, which SPEC 6 requires on
+    // every response regardless of mode.
+    let renders_words = matches!(output_form, OutputForm::Relative);
+    let locale = resolution.locale.clone();
+
     let value = parse_time_value(raw_time, resolution.now, &resolution.tz)?;
     let bytes = render_time_async(RenderContext {
         value,
@@ -53,10 +60,19 @@ async fn banner(
         output_format,
         tz: resolution.tz,
         now: resolution.now,
+        format: resolution.format,
+        locale: time_banner_render::locale::language_for(&locale),
     })
     .await?;
 
-    Ok((StatusCode::OK, [(header::CONTENT_TYPE, mime_type)], bytes))
+    let mut headers = HeaderMap::new();
+    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(mime_type));
+    if renders_words && let Ok(value) = HeaderValue::from_str(&locale) {
+        headers.insert(header::CONTENT_LANGUAGE, value);
+        headers.append(header::VARY, HeaderValue::from_static("Accept-Language"));
+    }
+
+    Ok((StatusCode::OK, headers, bytes))
 }
 
 /// Root handler - renders a minimal demo page with live examples and usage docs.

@@ -23,6 +23,18 @@ pub enum RenderError {
         #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
+
+    /// A `?format=` string was syntactically invalid, such as an
+    /// unrecognized `%`-directive.
+    #[error("invalid format string: {source}")]
+    InvalidFormat {
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    /// A `?format=` string or its expansion exceeded a render bound.
+    #[error("format expansion exceeded {limit} bytes")]
+    FormatTooLarge { limit: usize },
 }
 
 impl RenderError {
@@ -54,5 +66,15 @@ impl RenderError {
             context,
             source: Box::new(source),
         }
+    }
+
+    pub(crate) fn invalid_format(source: impl std::error::Error + Send + Sync + 'static) -> Self {
+        Self::InvalidFormat {
+            source: Box::new(source),
+        }
+    }
+
+    pub(crate) fn format_too_large(limit: usize) -> Self {
+        Self::FormatTooLarge { limit }
     }
 }

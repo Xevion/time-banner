@@ -17,6 +17,12 @@ pub enum TimeBannerError {
     /// 404 Not Found
     #[error("The requested resource was not found")]
     NotFound,
+    /// A `?format=` string was syntactically invalid.
+    #[error("Invalid format: {0}")]
+    InvalidFormat(String),
+    /// A `?format=` string or its expansion exceeded a render bound.
+    #[error("Payload too large: {0}")]
+    PayloadTooLarge(String),
     /// Internal errors not otherwise classified, such as extractor failures.
     #[error("Internal error: {0}")]
     Internal(String),
@@ -37,6 +43,8 @@ impl From<time_banner_render::RenderError> for TimeBannerError {
             RenderError::Template { .. } => TimeBannerError::RenderError(message),
             RenderError::Rasterize { .. } => TimeBannerError::RasterizeError(message),
             RenderError::Encode { .. } => TimeBannerError::RenderError(message),
+            RenderError::InvalidFormat { .. } => TimeBannerError::InvalidFormat(message),
+            RenderError::FormatTooLarge { .. } => TimeBannerError::PayloadTooLarge(message),
         }
     }
 }
@@ -50,6 +58,10 @@ impl IntoResponse for TimeBannerError {
                 (StatusCode::INTERNAL_SERVER_ERROR, "RasterizeError")
             }
             TimeBannerError::NotFound => (StatusCode::NOT_FOUND, "NotFound"),
+            TimeBannerError::InvalidFormat(_) => (StatusCode::BAD_REQUEST, "InvalidFormat"),
+            TimeBannerError::PayloadTooLarge(_) => {
+                (StatusCode::PAYLOAD_TOO_LARGE, "PayloadTooLarge")
+            }
             TimeBannerError::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Internal"),
         };
 

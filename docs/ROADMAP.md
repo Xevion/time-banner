@@ -55,12 +55,15 @@ exists.
 - [x] `~` substitution for `/` in path position
 - [x] Documented abbreviation disambiguation, encoded in the generated table
 - [x] `Timezone` response header on every response
-- [ ] `?format=` for absolute output, with bounded expansion (absolute output
-      draws with the default pattern; the parameter itself is unwired)
-- [ ] `Accept-Language` negotiation and `?locale=`
-- [ ] `Content-Language` and `Vary: Accept-Language`
+- [x] `?format=` for absolute output, with bounded expansion
+- [x] `Accept-Language` negotiation and `?locale=`
+- [x] `Content-Language` and `Vary: Accept-Language`
 - [ ] Bundled geolocation database for `tz=auto`, with `private` caching
-      (`tz=auto` parses and falls through to UTC, as a geolocation miss does)
+      (`tz=auto` parses and falls through to UTC, as a geolocation miss does;
+      the approach decided is a lightweight country-level fallback over a
+      license-free dataset such as DB-IP Lite, not a full city-level
+      MaxMind-style database, since embedded README images are proxied
+      through GitHub's Camo and never see the actual viewer's address)
 - [x] Favicon consumes resolved timezone rather than always UTC
 
 ## Phase 4: fonts

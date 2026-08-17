@@ -21,6 +21,12 @@ use crate::utils::HeaderMapExt;
 pub struct Resolution {
     pub now: Timestamp,
     pub tz: TimeZone,
+    /// `?format=` pattern for absolute output, unvalidated. `None` draws
+    /// with the default pattern.
+    pub format: Option<String>,
+    /// Negotiated language code, always one `time_banner_render::locale`
+    /// actually has words for.
+    pub locale: String,
 }
 
 impl Resolution {
@@ -62,7 +68,18 @@ impl Resolution {
             None => wall_clock,
         };
 
-        Ok(Resolution { now, tz })
+        let format = params.get("format").cloned();
+        let locale = crate::locale::resolve(
+            params.get("locale").map(String::as_str),
+            headers.get_str("accept-language"),
+        );
+
+        Ok(Resolution {
+            now,
+            tz,
+            format,
+            locale,
+        })
     }
 }
 
@@ -220,5 +237,36 @@ mod tests {
             .body(())
             .unwrap();
         check!(now_of(request).unwrap().as_second() == 1_798_761_600 + 6 * 3600);
+    }
+
+    #[test]
+    fn format_defaults_to_absent() {
+        let request = Request::builder().uri("/absolute/0").body(()).unwrap();
+        check!(resolve_request_parts(request).unwrap().format == None);
+    }
+
+    #[test]
+    fn format_is_read_from_the_query_string() {
+        let request = Request::builder()
+            .uri("/absolute/0?format=%25Y")
+            .body(())
+            .unwrap();
+        check!(resolve_request_parts(request).unwrap().format == Some("%Y".to_string()));
+    }
+
+    #[test]
+    fn locale_defaults_to_english() {
+        let request = Request::builder().uri("/relative/0").body(()).unwrap();
+        check!(resolve_request_parts(request).unwrap().locale == "en");
+    }
+
+    #[test]
+    fn locale_query_param_takes_precedence_over_the_header() {
+        let request = Request::builder()
+            .uri("/relative/0?locale=de")
+            .header("Accept-Language", "fr")
+            .body(())
+            .unwrap();
+        check!(resolve_request_parts(request).unwrap().locale == "de");
     }
 }

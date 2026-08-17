@@ -72,6 +72,8 @@ pub fn generate_favicon_png_bytes(time: Timestamp, tz: TimeZone) -> Result<Vec<u
         output_format: OutputFormat::Png,
         tz,
         now: time,
+        format: None,
+        locale: None,
     }
     .render()
 }
@@ -122,6 +124,8 @@ mod tests {
             output_format: format.clone(),
             tz: TimeZone::UTC,
             now,
+            format: None,
+            locale: None,
         }
         .render()
         .unwrap();

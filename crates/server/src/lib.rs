@@ -17,6 +17,7 @@ use crate::routes::{
 pub mod client_ip;
 pub mod config;
 pub mod error;
+mod locale;
 pub mod resolve;
 pub mod routes;
 pub mod utils;

@@ -41,6 +41,8 @@ fn context_in(offset: i64, form: OutputForm, format: OutputFormat) -> RenderCont
         output_format: format,
         tz: TimeZone::UTC,
         now,
+        format: None,
+        locale: None,
     }
 }
 
