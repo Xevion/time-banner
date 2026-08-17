@@ -47,13 +47,16 @@ behavior.
 ## Development
 
 ```bash
+just fonts      # fetch the bundled fonts (once; cached after that)
 just            # list recipes
 just check      # format-check, lint, test
 just test       # cargo nextest run
 cargo run       # run the server
 ```
 
-Requires a recent stable Rust toolchain.
+Requires a recent stable Rust toolchain. The font files aren't committed
+(section 15.1); `just check`/`just test`/`just build` fetch them automatically,
+but a bare `cargo run` or `cargo build` needs `just fonts` run first.
 
 ## License
 

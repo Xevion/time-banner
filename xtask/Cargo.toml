@@ -1,0 +1,18 @@
+[package]
+name = "xtask"
+description = "Asset pipeline tasks (font fetching) that don't belong in the compile graph"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "xtask"
+path = "src/main.rs"
+
+[dependencies]
+assert2.workspace = true
+sha2 = "0.10"
+ureq = "3"

@@ -21,15 +21,19 @@ format-check:
     cargo fmt --all -- --check
 
 # Lint with clippy (warnings are errors)
-lint:
+lint: fonts
     cargo clippy --all-targets --all-features -- -D warnings
 
 # Run tests
-test:
+test: fonts
     cargo nextest run
 
+# Fetch bundled fonts (cached; skips files whose checksum already matches)
+fonts:
+    cargo run -p xtask -- fonts
+
 # Build release binary
-build:
+build: fonts
     cargo build --release
 
 # Build Docker image
@@ -37,7 +41,7 @@ docker-build:
     docker build -t time-banner:latest .
 
 # Run benchmarks
-bench:
+bench: fonts
     cargo bench --workspace --benches
 
 # Security audit

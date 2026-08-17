@@ -23,8 +23,8 @@ arrives in.
 Nothing else can be built cleanly on the current structure, so this comes first.
 It adds no user-visible features.
 
-- [x] Reorganize into a workspace: `core`, `render`, `server` (`xtask` deferred
-      until Phase 4 gives it something to generate)
+- [x] Reorganize into a workspace: `core`, `render`, `server`, `xtask` (the
+      last added once font fetching gave it something to do)
 - [x] Migrate to a time library with a bundled tz database, ISO 8601 spans, and
       rounding
 - [x] Inject the clock rather than reading it inside the renderer
@@ -66,12 +66,17 @@ exists.
 Blocks styling, because text measurement is wrong until faces are real.
 
 - [ ] `xtask` subsetting pipeline over HarfBuzz, per script and weight
+      (`xtask fonts` exists and fetches whole faces, but doesn't subset)
 - [ ] Bundle manifest with coverage and license per face
-- [ ] Memory-mapped bundle loading; stop loading system fonts
+- [ ] Memory-mapped bundle loading; stop loading system fonts (system fonts
+      are gone, but faces are `include_bytes!`-embedded, not an external
+      mmap'd bundle)
 - [ ] Replace estimated text advance with real shaped measurement
 - [ ] Ordered fallback chain with substitution reported in a header
 - [ ] `?font=` over the manifest
-- [ ] Remove the proprietary face; substitute a metric-compatible open one
+- [x] Remove the proprietary face; substitute a metric-compatible open one
+      (Arial → Arimo, all three bundled faces now OFL-1.1 via Google Fonts,
+      commit-pinned and checksum-verified in `xtask/src/main.rs`)
 - [ ] CI regenerates the bundle and verifies it is unchanged
 
 ## Phase 5: modes

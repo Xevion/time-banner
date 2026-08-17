@@ -23,6 +23,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
+      - uses: actions/cache@v4
+        with:
+          path: crates/render/fonts/*.ttf
+          key: fonts-${{ hashFiles('xtask/src/main.rs') }}
+      - name: Fetch fonts
+        run: cargo run -p xtask -- fonts
       - uses: taiki-e/install-action@cargo-machete
       - name: Check formatting
         run: |
@@ -46,6 +52,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
+      - uses: actions/cache@v4
+        with:
+          path: crates/render/fonts/*.ttf
+          key: fonts-${{ hashFiles('xtask/src/main.rs') }}
+      - name: Fetch fonts
+        run: cargo run -p xtask -- fonts
       - uses: taiki-e/install-action@cargo-nextest
       - name: Run tests
         run: cargo nextest run

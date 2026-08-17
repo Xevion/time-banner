@@ -14,12 +14,18 @@ WORKDIR /usr/src/time-banner
 COPY ./Cargo.toml ./Cargo.lock* ./
 COPY ./crates/core/Cargo.toml ./crates/core/build.rs ./crates/core/
 COPY ./crates/core/src/abbr_tz ./crates/core/src/abbr_tz
-COPY ./crates/render/Cargo.toml ./crates/render/
+COPY ./crates/render/Cargo.toml ./crates/render/build.rs ./crates/render/
 COPY ./crates/server/Cargo.toml ./crates/server/
-RUN mkdir -p crates/core/src crates/render/src crates/server/src \
+COPY ./xtask ./xtask
+RUN mkdir -p crates/core/src crates/render/src crates/render/benches crates/server/src \
     && echo "fn main() {}" > crates/core/src/lib.rs \
     && echo "" > crates/render/src/lib.rs \
+    && echo "fn main() {}" > crates/render/benches/render.rs \
     && echo "fn main() {}" > crates/server/src/main.rs
+
+# Fetch the bundled fonts before anything compiles the render crate: its
+# build.rs requires them present, even for the stub-source layer below.
+RUN cargo run --release -p xtask -- fonts
 
 # Build with stub sources to produce a stable, dependency-only image layer
 RUN cargo build --release --workspace

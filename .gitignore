@@ -6,3 +6,6 @@
 .DS_Store
 .vscode/
 .bacon-locations
+
+# Fetched by `just fonts` (cargo xtask fonts); not committed.
+/crates/render/fonts/*.ttf

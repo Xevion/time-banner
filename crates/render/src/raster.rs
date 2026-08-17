@@ -5,7 +5,7 @@ use resvg::{tiny_skia, usvg};
 
 use crate::error::RenderError;
 
-const ARIAL: &[u8] = include_bytes!("../fonts/arial.ttf");
+const ARIMO: &[u8] = include_bytes!("../fonts/arimo.ttf");
 const INTER: &[u8] = include_bytes!("../fonts/inter.ttf");
 const ROBOTO_MONO: &[u8] = include_bytes!("../fonts/RobotoMono.ttf");
 
@@ -25,7 +25,7 @@ impl Rasterizer {
     /// templates only ever reference these 3 families.
     pub fn new() -> Self {
         let mut fontdb = fontdb::Database::new();
-        fontdb.load_font_data(ARIAL.to_vec());
+        fontdb.load_font_data(ARIMO.to_vec());
         fontdb.load_font_data(INTER.to_vec());
         fontdb.load_font_data(ROBOTO_MONO.to_vec());
 
