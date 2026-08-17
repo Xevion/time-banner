@@ -58,8 +58,11 @@ pub fn handle_rasterize(data: String, format: &OutputFormat) -> Result<Bytes, Ti
 }
 
 /// Main rendering pipeline: template -> SVG -> optional rasterization -> HTTP response.
+///
+/// `now` is the reference instant relative values are computed against.
 pub fn render_time_response(
     time: DateTime<Utc>,
+    now: DateTime<Utc>,
     output_form: OutputForm,
     extension: &str,
 ) -> impl IntoResponse + use<> {
@@ -71,7 +74,7 @@ pub fn render_time_response(
         output_format: output_format.clone(),
         timezone: None,
         format: None,
-        now: None,
+        now,
     };
 
     let rendered_template = match render_template(context) {
@@ -101,7 +104,7 @@ pub fn generate_favicon_png_bytes(time: DateTime<Utc>) -> Result<Vec<u8>, TimeBa
         output_format: OutputFormat::Png,
         timezone: None,
         format: None,
-        now: None,
+        now: time,
     };
 
     let rendered_template = render_template(context)

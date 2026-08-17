@@ -21,8 +21,14 @@ pub async fn relative_handler(
 ) -> Result<impl IntoResponse, TimeBannerError> {
     let (raw_time, extension) = parse_path(&path);
     tracing::debug!(raw_time, extension, "Relative time request");
-    let time = parse_time_value(raw_time)?;
-    Ok(render_time_response(time, OutputForm::Relative, extension))
+    let now = chrono::Utc::now();
+    let time = parse_time_value(raw_time, now)?;
+    Ok(render_time_response(
+        time,
+        now,
+        OutputForm::Relative,
+        extension,
+    ))
 }
 
 /// Handles `/absolute/{time}` - displays time in absolute format ("2025-01-17 14:30:00 UTC").
@@ -31,8 +37,14 @@ pub async fn absolute_handler(
 ) -> Result<impl IntoResponse, TimeBannerError> {
     let (raw_time, extension) = parse_path(&path);
     tracing::debug!(raw_time, extension, "Absolute time request");
-    let time = parse_time_value(raw_time)?;
-    Ok(render_time_response(time, OutputForm::Absolute, extension))
+    let now = chrono::Utc::now();
+    let time = parse_time_value(raw_time, now)?;
+    Ok(render_time_response(
+        time,
+        now,
+        OutputForm::Absolute,
+        extension,
+    ))
 }
 
 /// Handles `/{time}` - implicit absolute time display (same as absolute_handler).
@@ -41,8 +53,14 @@ pub async fn implicit_handler(
 ) -> Result<impl IntoResponse, TimeBannerError> {
     let (raw_time, extension) = parse_path(&path);
     tracing::debug!(raw_time, extension, "Implicit time request");
-    let time = parse_time_value(raw_time)?;
-    Ok(render_time_response(time, OutputForm::Absolute, extension))
+    let now = chrono::Utc::now();
+    let time = parse_time_value(raw_time, now)?;
+    Ok(render_time_response(
+        time,
+        now,
+        OutputForm::Absolute,
+        extension,
+    ))
 }
 
 /// Handles `/favicon.ico` - generates a dynamic clock favicon showing the current time.

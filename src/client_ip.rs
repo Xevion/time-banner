@@ -3,8 +3,8 @@
 //! Priority: `CF-Connecting-IP` (Cloudflare) -> rightmost `X-Forwarded-For`
 //! (Railway) -> socket peer address.
 
+use crate::error::TimeBannerError;
 use axum::extract::{ConnectInfo, FromRequestParts};
-use axum::http::StatusCode;
 use http::request::Parts;
 use std::net::{IpAddr, SocketAddr};
 
@@ -12,7 +12,7 @@ use std::net::{IpAddr, SocketAddr};
 pub struct ClientIp(pub IpAddr);
 
 impl<S: Send + Sync> FromRequestParts<S> for ClientIp {
-    type Rejection = (StatusCode, &'static str);
+    type Rejection = TimeBannerError;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         // CF-Connecting-IP -- set by Cloudflare, most trustworthy.
@@ -38,9 +38,8 @@ impl<S: Send + Sync> FromRequestParts<S> for ClientIp {
             return Ok(ClientIp(addr.ip()));
         }
 
-        Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Unable to determine client IP",
+        Err(TimeBannerError::Internal(
+            "Unable to determine client IP".to_string(),
         ))
     }
 }

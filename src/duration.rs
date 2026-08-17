@@ -183,14 +183,17 @@ pub fn parse_epoch_into_datetime(epoch: i64) -> Option<DateTime<Utc>> {
 /// Parses various time value formats into a UTC datetime.
 ///
 /// Supports:
-/// - Relative offsets: "+3600", "-1800" (seconds from now)
-/// - Duration strings: "+1y2d", "-3h30m" (using duration parser)
+/// - Relative offsets: "+3600", "-1800" (seconds from `now`)
+/// - Duration strings: "+1y2d", "-3h30m" (using duration parser, relative to `now`)
 /// - Epoch timestamps: "1752170474" (Unix timestamp)
-pub fn parse_time_value(raw_time: &str) -> Result<DateTime<Utc>, TimeBannerError> {
+///
+/// `now` is the reference instant relative values are computed against.
+pub fn parse_time_value(
+    raw_time: &str,
+    now: DateTime<Utc>,
+) -> Result<DateTime<Utc>, TimeBannerError> {
     // Handle relative time values (starting with + or -, or duration strings like "1y2d")
     if raw_time.starts_with('+') || raw_time.starts_with('-') {
-        let now = Utc::now();
-
         // Try parsing as simple offset seconds first
         if let Ok(offset_seconds) = raw_time.parse::<i64>() {
             return Ok(now + Duration::seconds(offset_seconds));

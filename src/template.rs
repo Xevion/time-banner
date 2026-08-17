@@ -57,9 +57,8 @@ pub struct RenderContext {
     /// Custom time format string (not yet implemented)
     #[allow(dead_code)]
     pub format: Option<String>,
-    /// Reference time for relative calculations (not yet implemented - uses current time)
-    #[allow(dead_code)]
-    pub now: Option<i64>,
+    /// Reference instant relative values are computed against.
+    pub now: DateTime<Utc>,
 }
 
 /// Calculates clock hand positions for a given time.
@@ -122,13 +121,12 @@ pub fn render_template(context: RenderContext) -> Result<String, tera::Error> {
 
     match context.output_form {
         OutputForm::Relative => {
-            let now = Utc::now();
             let mut formatter = Formatter::new();
-            let text = if context.value > now {
+            let text = if context.value > context.now {
                 formatter.ago("from now");
-                formatter.convert_chrono(now, context.value)
+                formatter.convert_chrono(context.now, context.value)
             } else {
-                formatter.convert_chrono(context.value, now)
+                formatter.convert_chrono(context.value, context.now)
             };
             insert_basic_text(&mut template_context, &text);
             TEMPLATES.render("basic.svg", &template_context)
@@ -208,13 +206,14 @@ mod tests {
 
     #[test]
     fn basic_svg_declares_explicit_size() {
+        let now = Utc::now();
         let svg = render_template(RenderContext {
-            value: Utc::now(),
+            value: now,
             output_form: OutputForm::Absolute,
             output_format: crate::render::OutputFormat::Svg,
             timezone: None,
             format: None,
-            now: None,
+            now,
         })
         .expect("basic.svg should render");
         assert!(svg.contains("viewBox="));
@@ -223,14 +222,15 @@ mod tests {
 
     #[test]
     fn future_relative_time_does_not_render_unknown() {
-        let future = Utc::now() + chrono::Duration::hours(1);
+        let now = Utc::now();
+        let future = now + chrono::Duration::hours(1);
         let svg = render_template(RenderContext {
             value: future,
             output_form: OutputForm::Relative,
             output_format: crate::render::OutputFormat::Svg,
             timezone: None,
             format: None,
-            now: None,
+            now,
         })
         .expect("basic.svg should render");
         assert!(!svg.contains("???"));

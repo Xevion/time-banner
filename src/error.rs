@@ -17,6 +17,9 @@ pub enum TimeBannerError {
     /// 404 Not Found
     #[error("The requested resource was not found")]
     NotFound,
+    /// Internal errors not otherwise classified, such as extractor failures.
+    #[error("Internal error: {0}")]
+    Internal(String),
 }
 
 /// JSON error response format for HTTP clients.
@@ -35,6 +38,7 @@ impl IntoResponse for TimeBannerError {
                 (StatusCode::INTERNAL_SERVER_ERROR, "RasterizeError")
             }
             TimeBannerError::NotFound => (StatusCode::NOT_FOUND, "NotFound"),
+            TimeBannerError::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Internal"),
         };
 
         (
