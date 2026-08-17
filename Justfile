@@ -36,6 +36,10 @@ build:
 docker-build:
     docker build -t time-banner:latest .
 
+# Run benchmarks
+bench:
+    cargo bench --workspace
+
 # Security audit
 audit:
     cargo audit

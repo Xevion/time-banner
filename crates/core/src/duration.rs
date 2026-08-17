@@ -6,7 +6,7 @@
 
 use std::sync::LazyLock;
 
-use jiff::{Span, Timestamp, ToSpan};
+use jiff::{Span, Timestamp, ToSpan, tz::TimeZone};
 use regex::Regex;
 
 use crate::error::ParseError;
@@ -52,34 +52,57 @@ static FULL_RELATIVE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
 pub fn parse_duration(str: &str) -> Result<Span, ParseError> {
     let capture = FULL_RELATIVE_PATTERN.captures(str).unwrap();
 
-    let sign: i64 = match capture.name("sign").map(|m| m.as_str()) {
-        None | Some("+") => 1,
-        Some("-") => -1,
-        Some(other) => return Err(ParseError(format!("Could not parse sign from {}", other))),
+    // The regex only ever captures '+' or '-' here, so no other value is reachable.
+    let sign: i64 = if capture.name("sign").map(|m| m.as_str()) == Some("-") {
+        -1
+    } else {
+        1
     };
 
-    let unit = |name: &str| -> Result<i64, ParseError> {
-        match capture.name(name) {
-            None => Ok(0),
-            Some(m) => m.as_str().parse::<i64>().map(|n| n * sign).map_err(|e| {
-                ParseError(format!(
-                    "Could not parse {} from {} ({})",
-                    name,
-                    m.as_str(),
-                    e
-                ))
-            }),
-        }
-    };
+    // A duration component's digits can fit an i64 yet still exceed the
+    // range a `Span` accepts for that unit (e.g. years beyond +-19998), so
+    // the fallible `try_*` setters are used instead of the panicking ones.
+    let mut span = Span::new();
+    span = apply_unit(span, "year", capture.name("year"), sign, Span::try_years)?;
+    span = apply_unit(span, "month", capture.name("month"), sign, Span::try_months)?;
+    span = apply_unit(span, "week", capture.name("week"), sign, Span::try_weeks)?;
+    span = apply_unit(span, "day", capture.name("day"), sign, Span::try_days)?;
+    span = apply_unit(span, "hour", capture.name("hour"), sign, Span::try_hours)?;
+    span = apply_unit(
+        span,
+        "minute",
+        capture.name("minute"),
+        sign,
+        Span::try_minutes,
+    )?;
+    span = apply_unit(
+        span,
+        "second",
+        capture.name("second"),
+        sign,
+        Span::try_seconds,
+    )?;
+    Ok(span)
+}
 
-    Ok(Span::new()
-        .years(unit("year")?)
-        .months(unit("month")?)
-        .weeks(unit("week")?)
-        .days(unit("day")?)
-        .hours(unit("hour")?)
-        .minutes(unit("minute")?)
-        .seconds(unit("second")?))
+/// Applies one matched duration component to `span` via a checked setter,
+/// reporting the offending component and its raw text on failure.
+fn apply_unit(
+    span: Span,
+    component: &'static str,
+    matched: Option<regex::Match>,
+    sign: i64,
+    setter: impl Fn(Span, i64) -> Result<Span, jiff::Error>,
+) -> Result<Span, ParseError> {
+    let Some(m) = matched else {
+        return Ok(span);
+    };
+    let out_of_range = || ParseError::ComponentOutOfRange {
+        component,
+        input: m.as_str().to_string(),
+    };
+    let n = m.as_str().parse::<i64>().map_err(|_| out_of_range())?;
+    setter(span, n * sign).map_err(|_| out_of_range())
 }
 
 /// Converts a Unix epoch timestamp to a `Timestamp`.
@@ -106,30 +129,24 @@ pub fn parse_time_value(raw_time: &str, now: Timestamp) -> Result<Timestamp, Par
 
         // Calendar units (years, months, ...) need a reference date to
         // resolve, so route through a UTC-zoned view of `now`.
-        let zoned = now
-            .in_tz("UTC")
-            .map_err(|e| ParseError(format!("Could not resolve UTC timezone: {}", e)))?;
+        let zoned = now.to_zoned(TimeZone::UTC);
         let result = zoned
             .checked_add(span)
-            .map_err(|e| ParseError(format!("Could not apply relative time: {}", e)))?;
+            .map_err(|_| ParseError::OutOfRange)?;
         return Ok(result.timestamp());
     }
 
     // Try to parse as epoch timestamp
     if let Ok(epoch) = raw_time.parse::<i64>() {
-        return parse_epoch_into_timestamp(epoch)
-            .ok_or_else(|| ParseError("Invalid timestamp".to_string()));
+        return parse_epoch_into_timestamp(epoch).ok_or(ParseError::OutOfRange);
     }
 
-    Err(ParseError(format!(
-        "Could not parse time value: {}",
-        raw_time
-    )))
+    Err(ParseError::UnrecognizedValue(raw_time.to_string()))
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::duration::parse_duration;
+    use super::*;
     use jiff::{Span, ToSpan};
 
     #[test]
@@ -222,5 +239,99 @@ mod tests {
             parse_duration("999seconds").unwrap().fieldwise(),
             999.seconds()
         );
+    }
+
+    #[test]
+    fn value_epoch_seconds() {
+        let now = Timestamp::UNIX_EPOCH;
+        let parsed = parse_time_value("1752170474", now).unwrap();
+        assert_eq!(parsed.as_second(), 1752170474);
+    }
+
+    #[test]
+    fn value_signed_seconds() {
+        let now = Timestamp::from_second(1_000_000).unwrap();
+        assert_eq!(
+            parse_time_value("+3600", now).unwrap().as_second(),
+            1_003_600
+        );
+        assert_eq!(parse_time_value("-1800", now).unwrap().as_second(), 998_200);
+    }
+
+    #[test]
+    fn value_human_duration() {
+        let now = Timestamp::from_second(0).unwrap();
+        let parsed = parse_time_value("+1d", now).unwrap();
+        assert_eq!(parsed.as_second(), 86_400);
+    }
+
+    #[test]
+    fn value_unrecognized() {
+        let now = Timestamp::UNIX_EPOCH;
+        assert_eq!(
+            parse_time_value("not-a-time", now).unwrap_err(),
+            ParseError::UnrecognizedValue("not-a-time".to_string())
+        );
+    }
+
+    #[test]
+    fn value_epoch_out_of_range() {
+        let now = Timestamp::UNIX_EPOCH;
+        assert_eq!(
+            parse_time_value(&i64::MAX.to_string(), now).unwrap_err(),
+            ParseError::OutOfRange
+        );
+    }
+
+    #[test]
+    fn component_out_of_range_reports_the_offending_unit() {
+        let err = parse_duration("999999999999999999999y").unwrap_err();
+        assert_eq!(
+            err,
+            ParseError::ComponentOutOfRange {
+                component: "year",
+                input: "999999999999999999999".to_string(),
+            }
+        );
+    }
+}
+
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        /// The parser is a request-facing entry point over untrusted input;
+        /// it must reject cleanly rather than panic, no matter what arrives.
+        #[test]
+        fn parse_time_value_never_panics(s in ".{0,64}") {
+            let _ = parse_time_value(&s, Timestamp::UNIX_EPOCH);
+        }
+
+        #[test]
+        fn parse_duration_never_panics(s in "[-+]?[0-9]{0,6}[a-zA-Z]{0,8}[0-9]{0,6}[a-zA-Z]{0,8}") {
+            let _ = parse_duration(&s);
+        }
+
+        /// Every epoch second within the representable range round-trips
+        /// through the value grammar unchanged.
+        #[test]
+        fn epoch_round_trips(epoch in -100_000_000_000i64..100_000_000_000i64) {
+            let now = Timestamp::UNIX_EPOCH;
+            let parsed = parse_time_value(&epoch.to_string(), now).unwrap();
+            prop_assert_eq!(parsed.as_second(), epoch);
+        }
+
+        /// Signed-second offsets are relative to `now` and round-trip through
+        /// plain addition, independent of the duration grammar.
+        #[test]
+        fn signed_seconds_round_trip(offset in -1_000_000i64..1_000_000i64) {
+            let now = Timestamp::from_second(1_700_000_000).unwrap();
+            let sign = if offset < 0 { "" } else { "+" };
+            let raw = format!("{sign}{offset}");
+            let parsed = parse_time_value(&raw, now).unwrap();
+            prop_assert_eq!(parsed.as_second(), now.as_second() + offset);
+        }
     }
 }

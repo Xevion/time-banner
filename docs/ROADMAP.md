@@ -23,16 +23,17 @@ arrives in.
 Nothing else can be built cleanly on the current structure, so this comes first.
 It adds no user-visible features.
 
-- [ ] Reorganize into a workspace: `core`, `render`, `server`, `xtask`
-- [ ] Migrate to a time library with a bundled tz database, ISO 8601 spans, and
+- [x] Reorganize into a workspace: `core`, `render`, `server` (`xtask` deferred
+      until Phase 4 gives it something to generate)
+- [x] Migrate to a time library with a bundled tz database, ISO 8601 spans, and
       rounding
-- [ ] Inject the clock rather than reading it inside the renderer
-- [ ] Typed error enum with stable codes and a single status mapping
-- [ ] Move rasterization and encoding off the async executor
-- [ ] Build the font database once, not per request
-- [ ] Compile templates in; drop the dev-versus-production path fork
-- [ ] Graceful shutdown with a bounded drain
-- [ ] Test scaffolding: parameterized cases, property tests, benchmark harness
+- [x] Inject the clock rather than reading it inside the renderer
+- [x] Typed error enum with stable codes and a single status mapping
+- [x] Move rasterization and encoding off the async executor
+- [x] Build the font database once, not per request
+- [x] Compile templates in; drop the dev-versus-production path fork
+- [x] Graceful shutdown with a bounded drain
+- [x] Test scaffolding: parameterized cases, property tests, benchmark harness
 
 ## Phase 2: value grammar
 

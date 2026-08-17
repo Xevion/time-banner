@@ -19,3 +19,10 @@ ico = "0.5"
 thiserror = "2.0"
 tracing = "0.1"
 jiff = "0.2.35"
+
+[dev-dependencies]
+criterion = { version = "0.8.2", features = ["html_reports"] }
+
+[[bench]]
+name = "render"
+harness = false

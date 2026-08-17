@@ -31,7 +31,7 @@ struct ErrorResponse {
 
 impl From<time_banner_core::ParseError> for TimeBannerError {
     fn from(e: time_banner_core::ParseError) -> Self {
-        TimeBannerError::ParseError(e.0)
+        TimeBannerError::ParseError(e.to_string())
     }
 }
 

@@ -26,6 +26,7 @@ static TEMPLATES: LazyLock<Tera> = LazyLock::new(|| {
 });
 
 /// Display format for time values.
+#[derive(Debug, Clone, Copy)]
 pub enum OutputForm {
     /// Relative display: "2 hours ago", "in 3 days"
     Relative,
