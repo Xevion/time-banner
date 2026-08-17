@@ -113,3 +113,36 @@ pub fn convert_png_to_ico(png_bytes: &[u8]) -> Result<Vec<u8>, RenderError> {
 
     Ok(ico_buffer)
 }
+
+#[cfg(test)]
+mod tests {
+    use assert2::assert;
+    use rstest::rstest;
+
+    use super::*;
+
+    const PNG_SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1a, b'\n'];
+
+    /// Every (mode, format) pairing that exists today must round-trip
+    /// through the full pipeline into recognizable bytes for that format,
+    /// not just "some bytes" (a smoke test the benchmark doesn't provide,
+    /// since criterion never asserts on its input).
+    #[rstest]
+    fn render_time_produces_valid_output(
+        #[values(OutputForm::Absolute, OutputForm::Relative)] form: OutputForm,
+        #[values(OutputFormat::Svg, OutputFormat::Png)] format: OutputFormat,
+    ) {
+        let now = Timestamp::from_second(1_700_000_000).unwrap();
+        let bytes = render_time(now, now, form, format.clone()).unwrap();
+
+        match format {
+            OutputFormat::Svg => {
+                let svg = String::from_utf8(bytes).expect("SVG output must be valid UTF-8");
+                assert!(svg.contains("<svg"));
+            }
+            OutputFormat::Png => {
+                assert!(bytes.starts_with(&PNG_SIGNATURE));
+            }
+        }
+    }
+}

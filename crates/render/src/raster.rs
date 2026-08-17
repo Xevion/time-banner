@@ -94,3 +94,50 @@ pub fn encode_png(pixmap: tiny_skia::Pixmap) -> Result<Vec<u8>, RenderError> {
 
     Ok(data)
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use assert2::{assert, check};
+    use rstest::{fixture, rstest};
+
+    use super::*;
+
+    const TINY_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10" fill="red"/></svg>"#;
+
+    /// Parsing 3 embedded fonts into a fontdb is the expensive part of
+    /// `Rasterizer::new`; shared once across every test in this module.
+    #[fixture]
+    #[once]
+    fn rasterizer() -> Rasterizer {
+        Rasterizer::new()
+    }
+
+    #[rstest]
+    fn parses_and_rasterizes(rasterizer: &Rasterizer) {
+        let tree = rasterizer.parse(TINY_SVG.as_bytes()).unwrap();
+        let pixmap = rasterizer.rasterize(&tree);
+        check!(pixmap.width() == 10);
+        check!(pixmap.height() == 10);
+    }
+
+    #[rstest]
+    fn encoded_png_has_a_valid_signature(rasterizer: &Rasterizer) {
+        let tree = rasterizer.parse(TINY_SVG.as_bytes()).unwrap();
+        let pixmap = rasterizer.rasterize(&tree);
+        let bytes = encode_png(pixmap).unwrap();
+        assert!(bytes.starts_with(&[0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1a, b'\n']));
+    }
+
+    /// Every bundled font file must be a font `fontdb` can actually load:
+    /// a corrupted or truncated fetch should fail loudly here, not at
+    /// first render in production.
+    #[rstest]
+    fn bundled_font_files_parse(#[files("fonts/*.ttf")] path: PathBuf) {
+        let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        let mut db = fontdb::Database::new();
+        db.load_font_data(bytes);
+        assert!(!db.is_empty());
+    }
+}
