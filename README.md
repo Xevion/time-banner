@@ -47,10 +47,9 @@ Dynamically generated timestamp images
 
 ## Ideas
 
-- Frontend with React for Demo
-  - Refetch favicon every 10 minutes
-  - Click to copy image URLs
-  - Dynamic Examples
+- ~~Frontend with React for Demo~~ - Done, as a server-rendered HTML page (`/`) instead: no JS, examples recomputed on every request.
+  - Refetch favicon every 10 minutes - would need JS, out of scope for the current no-JS page.
+  - Click to copy image URLs - same, would need JS.
 - Dynamic light/dark mode
   - `?theme={auto|light|dark}`, default `light`
   - Customizable SVG templates

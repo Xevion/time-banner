@@ -1,6 +1,7 @@
 use std::sync::LazyLock;
 
 use chrono::{DateTime, Timelike, Utc};
+use serde::Serialize;
 use tera::{Context, Tera};
 use timeago::Formatter;
 
@@ -10,10 +11,10 @@ use crate::render::OutputFormat;
 static TEMPLATES: LazyLock<Tera> = LazyLock::new(|| {
     let template_pattern = if cfg!(debug_assertions) {
         // Development: templates are in src/templates
-        "src/templates/**/*.svg"
+        "src/templates/**/*.{svg,html}"
     } else {
         // Production: templates are in /usr/src/app/templates (relative to working dir)
-        "templates/**/*.svg"
+        "templates/**/*.{svg,html}"
     };
 
     let mut tera = Tera::default();
@@ -126,5 +127,56 @@ pub fn render_template(context: RenderContext) -> Result<String, tera::Error> {
 
             TEMPLATES.render("clock.svg", &template_context)
         }
+    }
+}
+
+/// A single live example shown on the index page.
+#[derive(Serialize)]
+struct Example {
+    label: &'static str,
+    path: String,
+}
+
+/// Renders the index page, with live example image URLs computed from `now`.
+pub fn render_index_page(now: DateTime<Utc>) -> Result<String, tera::Error> {
+    let epoch = now.timestamp();
+
+    let examples = vec![
+        Example {
+            label: "Absolute time",
+            path: format!("/absolute/{epoch}"),
+        },
+        Example {
+            label: "Relative time, past",
+            path: format!("/relative/{}", epoch - 3600),
+        },
+        Example {
+            label: "Relative time, future",
+            path: "/relative/+3600".to_string(),
+        },
+        Example {
+            label: "PNG output",
+            path: format!("/relative/{}.png", epoch - 3600),
+        },
+        Example {
+            label: "Analog clock favicon",
+            path: "/favicon.ico".to_string(),
+        },
+    ];
+
+    let mut context = Context::new();
+    context.insert("examples", &examples);
+    TEMPLATES.render("index.html", &context)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn index_page_renders() {
+        let html = render_index_page(Utc::now()).expect("index page should render");
+        assert!(html.contains("time-banner"));
+        assert!(html.contains("/favicon.ico"));
     }
 }

@@ -2,16 +2,17 @@ use crate::client_ip::ClientIp;
 use crate::duration::parse_time_value;
 use crate::error::TimeBannerError;
 use crate::render::{convert_png_to_ico, generate_favicon_png_bytes, render_time_response};
-use crate::template::OutputForm;
+use crate::template::{OutputForm, render_index_page};
 use crate::utils::parse_path;
 use axum::extract::Path;
 use axum::http::{StatusCode, header};
-use axum::response::IntoResponse;
+use axum::response::{Html, IntoResponse};
 
-/// Root handler - redirects to current time in relative format.
-pub async fn index_handler() -> impl IntoResponse {
-    let epoch_now = chrono::Utc::now().timestamp();
-    axum::response::Redirect::temporary(&format!("/relative/{epoch_now}"))
+/// Root handler - renders a minimal demo page with live examples and usage docs.
+pub async fn index_handler() -> Result<impl IntoResponse, TimeBannerError> {
+    let html = render_index_page(chrono::Utc::now())
+        .map_err(|e| TimeBannerError::RenderError(format!("Failed to render index page: {}", e)))?;
+    Ok(Html(html))
 }
 
 /// Handles `/relative/{time}` - displays time in relative format ("2 hours ago").

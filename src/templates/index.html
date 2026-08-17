@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>time-banner</title>
+<link rel="icon" href="/favicon.ico">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #fdfdfc;
+    --fg: #1a1a1a;
+    --muted: #666;
+    --border: #ddd;
+    --code-bg: #f2f2f0;
+    --accent: #2b5adb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16171a;
+      --fg: #e8e8e6;
+      --muted: #999;
+      --border: #333;
+      --code-bg: #1f2023;
+      --accent: #7aa2ff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.5;
+    max-width: 40rem;
+    margin: 0 auto;
+    padding: 2.5rem 1.25rem 4rem;
+  }
+  h1 { margin: 0 0 0.25rem; font-size: 1.5rem; }
+  .tagline { color: var(--muted); margin: 0 0 2.5rem; }
+  h2 {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.4rem;
+    margin: 2.5rem 0 1rem;
+  }
+  code, .path {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 0.85em;
+  }
+  code {
+    background: var(--code-bg);
+    padding: 0.1em 0.4em;
+    border-radius: 0.3em;
+  }
+  a { color: var(--accent); }
+  .example {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .example:last-child { border-bottom: none; }
+  .example img {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 0.3em;
+    flex-shrink: 0;
+  }
+  .example .label {
+    display: block;
+    font-size: 0.9rem;
+    margin-bottom: 0.3rem;
+  }
+  .example .path {
+    color: var(--muted);
+    word-break: break-all;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 0.4rem 0.6rem 0.4rem 0; vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; }
+  tr + tr td, tr + tr th { border-top: 1px solid var(--border); }
+  footer {
+    margin-top: 3rem;
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+</style>
+</head>
+<body>
+  <h1>time-banner</h1>
+  <p class="tagline">Dynamically generated timestamp images, served as SVG or PNG.</p>
+
+  <h2>Examples</h2>
+  {% for example in examples %}
+  <div class="example">
+    <img src="{{ example.path }}" alt="{{ example.label }}">
+    <div>
+      <span class="label">{{ example.label }}</span>
+      <code class="path">{{ example.path }}</code>
+    </div>
+  </div>
+  {% endfor %}
+
+  <h2>Usage</h2>
+  <table>
+    <tr><th><code>/absolute/{value}</code></th><td>Absolute timestamp, RFC 3339 formatted, e.g. <code>2025-01-17T14:30:00+00:00</code>. Aliases: <code>/abs/{value}</code>, <code>/{value}</code>.</td></tr>
+    <tr><th><code>/relative/{value}</code></th><td>Relative timestamp, e.g. <code>2 hours ago</code>. Alias: <code>/rel/{value}</code>.</td></tr>
+    <tr><th><code>{value}</code></th><td>A Unix epoch in seconds (<code>1752170474</code>), or an offset from now: <code>+3600</code>, <code>-1800</code>, or a duration string like <code>+1h30m</code>, <code>-3d</code>.</td></tr>
+    <tr><th>extension</th><td>Append <code>.svg</code> (default) or <code>.png</code> to the value, e.g. <code>/relative/-1800.png</code>.</td></tr>
+    <tr><th><code>/favicon.ico</code></th><td>An analog clock favicon showing the current time. Also available as <code>/favicon.png</code>.</td></tr>
+  </table>
+
+  <footer>
+    <a href="https://github.com/Xevion/time-banner">Source on GitHub</a>
+  </footer>
+</body>
+</html>
