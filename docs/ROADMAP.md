@@ -45,7 +45,7 @@ exists.
 - [x] `now` literal
 - [x] Human durations (`+1y2d3h`), unifying the existing duration parser
 - [x] Digit-count disambiguation between compact dates and epochs
-- [ ] `?now=` and the `Date-Now` header as the reference instant
+- [x] `?now=` and the `Date-Now` header as the reference instant
 - [x] Round-trip and never-panic property tests over the whole grammar
 
 ## Phase 3: timezones and localization

@@ -1,5 +1,6 @@
 use crate::client_ip::ClientIp;
 use crate::error::TimeBannerError;
+use crate::reference_now::ReferenceNow;
 use crate::utils::parse_path;
 use axum::extract::Path;
 use axum::http::{StatusCode, header};
@@ -50,10 +51,10 @@ pub async fn index_handler() -> Result<impl IntoResponse, TimeBannerError> {
 /// Handles `/relative/{time}` - displays time in relative format ("2 hours ago").
 pub async fn relative_handler(
     Path(path): Path<String>,
+    ReferenceNow(now): ReferenceNow,
 ) -> Result<impl IntoResponse, TimeBannerError> {
     let (raw_time, extension) = parse_path(&path);
     tracing::debug!(raw_time, extension, "Relative time request");
-    let now = Timestamp::now();
     let time = parse_time_value(raw_time, now)?;
     let output_format = OutputFormat::from_extension(extension);
     let bytes = render_time_async(time, now, OutputForm::Relative, output_format.clone()).await?;
@@ -67,10 +68,10 @@ pub async fn relative_handler(
 /// Handles `/absolute/{time}` - displays time in absolute format ("2025-01-17 14:30:00 UTC").
 pub async fn absolute_handler(
     Path(path): Path<String>,
+    ReferenceNow(now): ReferenceNow,
 ) -> Result<impl IntoResponse, TimeBannerError> {
     let (raw_time, extension) = parse_path(&path);
     tracing::debug!(raw_time, extension, "Absolute time request");
-    let now = Timestamp::now();
     let time = parse_time_value(raw_time, now)?;
     let output_format = OutputFormat::from_extension(extension);
     let bytes = render_time_async(time, now, OutputForm::Absolute, output_format.clone()).await?;
@@ -84,10 +85,10 @@ pub async fn absolute_handler(
 /// Handles `/{time}` - implicit absolute time display (same as absolute_handler).
 pub async fn implicit_handler(
     Path(path): Path<String>,
+    ReferenceNow(now): ReferenceNow,
 ) -> Result<impl IntoResponse, TimeBannerError> {
     let (raw_time, extension) = parse_path(&path);
     tracing::debug!(raw_time, extension, "Implicit time request");
-    let now = Timestamp::now();
     let time = parse_time_value(raw_time, now)?;
     let output_format = OutputFormat::from_extension(extension);
     let bytes = render_time_async(time, now, OutputForm::Absolute, output_format.clone()).await?;

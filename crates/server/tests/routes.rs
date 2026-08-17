@@ -65,6 +65,50 @@ async fn route_returns_expected_status_and_content_type(
 }
 
 #[rstest]
+#[case::before_reference_now_renders_ago("/relative/0?now=1000000000", "ago")]
+#[case::after_reference_now_renders_from_now("/relative/2000000000?now=1000000000", "from now")]
+#[tokio::test]
+async fn now_override_shifts_relative_rendering(
+    router: Router,
+    #[case] uri: &str,
+    #[case] expected_phrase: &str,
+) {
+    let response = get(router, uri).await;
+    check!(response.status() == StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let body = String::from_utf8(body.to_vec()).unwrap();
+    assert!(body.contains(expected_phrase));
+}
+
+#[rstest]
+#[tokio::test]
+async fn malformed_now_override_is_bad_request(router: Router) {
+    let response = get(router, "/relative/0?now=not-a-time").await;
+    check!(response.status() == StatusCode::BAD_REQUEST);
+}
+
+#[rstest]
+#[tokio::test]
+async fn date_now_header_shifts_relative_rendering(router: Router) {
+    let response = router
+        .oneshot(
+            Request::builder()
+                .uri("/relative/2000000000")
+                .header("Date-Now", "1000000000")
+                .body(Body::empty())
+                .expect("valid request"),
+        )
+        .await
+        .expect("router is infallible");
+    check!(response.status() == StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let body = String::from_utf8(body.to_vec()).unwrap();
+    assert!(body.contains("from now"));
+}
+
+#[rstest]
 #[tokio::test]
 async fn health_reports_ok_and_version(router: Router) {
     let response = get(router, "/health").await;
