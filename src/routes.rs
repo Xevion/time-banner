@@ -19,6 +19,7 @@ pub async fn relative_handler(
     Path(path): Path<String>,
 ) -> Result<impl IntoResponse, TimeBannerError> {
     let (raw_time, extension) = parse_path(&path);
+    tracing::debug!(raw_time, extension, "Relative time request");
     let time = parse_time_value(raw_time)?;
     Ok(render_time_response(time, OutputForm::Relative, extension))
 }
@@ -28,6 +29,7 @@ pub async fn absolute_handler(
     Path(path): Path<String>,
 ) -> Result<impl IntoResponse, TimeBannerError> {
     let (raw_time, extension) = parse_path(&path);
+    tracing::debug!(raw_time, extension, "Absolute time request");
     let time = parse_time_value(raw_time)?;
     Ok(render_time_response(time, OutputForm::Absolute, extension))
 }
@@ -37,6 +39,7 @@ pub async fn implicit_handler(
     Path(path): Path<String>,
 ) -> Result<impl IntoResponse, TimeBannerError> {
     let (raw_time, extension) = parse_path(&path);
+    tracing::debug!(raw_time, extension, "Implicit time request");
     let time = parse_time_value(raw_time)?;
     Ok(render_time_response(time, OutputForm::Absolute, extension))
 }

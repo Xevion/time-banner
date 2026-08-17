@@ -58,8 +58,19 @@ jobs:
         with:
           context: .
           push: false
+          load: true
+          tags: time-banner:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Smoke test
+        run: |
+          docker run -d --name time-banner-ci -p 3000:3000 -e ENV=production time-banner:ci
+          for i in $(seq 1 10); do
+            if curl --fail --silent http://localhost:3000/health; then exit 0; fi
+            sleep 1
+          done
+          docker logs time-banner-ci
+          exit 1
 
   security:
     name: Security Scan

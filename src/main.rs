@@ -7,7 +7,9 @@ use crate::routes::{
 use axum::{Router, http::HeaderValue, response::Response, routing::get};
 use config::Configuration;
 use dotenvy::dotenv;
+use std::time::Duration;
 use tower_http::compression::CompressionLayer;
+use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
 
@@ -48,7 +50,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/", get(index_handler))
-        .route("/health", get(|| async { axum::http::StatusCode::OK }))
+        .route("/health", get(health_handler))
         .route("/favicon.ico", get(favicon_handler))
         .route("/favicon.png", get(favicon_png_handler))
         .route("/{path}", get(implicit_handler))
@@ -59,6 +61,10 @@ async fn main() {
         .fallback(fallback_handler)
         .layer((
             TraceLayer::new_for_http(),
+            TimeoutLayer::with_status_code(
+                axum::http::StatusCode::GATEWAY_TIMEOUT,
+                Duration::from_secs(10),
+            ),
             CompressionLayer::new()
                 .zstd(true)
                 .br(true)
@@ -86,4 +92,9 @@ async fn add_server_header(mut response: Response) -> Response {
     }
 
     response
+}
+
+/// Health check handler - reports OK along with the running version.
+async fn health_handler() -> String {
+    format!("OK time-banner/{}", env!("CARGO_PKG_VERSION"))
 }

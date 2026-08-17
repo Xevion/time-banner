@@ -28,28 +28,20 @@ struct ErrorResponse {
 
 impl IntoResponse for TimeBannerError {
     fn into_response(self) -> Response {
-        let (status, error_name, message) = match &self {
-            TimeBannerError::ParseError(msg) => {
-                (StatusCode::BAD_REQUEST, "ParseError", msg.clone())
+        let (status, error_name) = match &self {
+            TimeBannerError::ParseError(_) => (StatusCode::BAD_REQUEST, "ParseError"),
+            TimeBannerError::RenderError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "RenderError"),
+            TimeBannerError::RasterizeError(_) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, "RasterizeError")
             }
-            TimeBannerError::RenderError(msg) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "RenderError",
-                msg.clone(),
-            ),
-            TimeBannerError::RasterizeError(msg) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "RasterizeError",
-                msg.clone(),
-            ),
-            TimeBannerError::NotFound => (StatusCode::NOT_FOUND, "NotFound", self.to_string()),
+            TimeBannerError::NotFound => (StatusCode::NOT_FOUND, "NotFound"),
         };
 
         (
             status,
             Json(ErrorResponse {
                 error: error_name.to_string(),
-                message,
+                message: self.to_string(),
             }),
         )
             .into_response()
