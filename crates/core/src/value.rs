@@ -262,13 +262,16 @@ pub fn parse_time_value(
     Err(ParseError::UnrecognizedValue(raw_time.to_string()))
 }
 
+/// A resolved `start/end` interval, as produced by [`parse_interval`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Interval {
+    pub start: Timestamp,
+    pub end: Timestamp,
+}
+
 /// Parses an interval (`progress` only, section 3): `start/end` or
 /// `start/P1Y` (start plus an unsigned ISO 8601 duration).
-pub fn parse_interval(
-    raw: &str,
-    now: Timestamp,
-    tz: &TimeZone,
-) -> Result<(Timestamp, Timestamp), ParseError> {
+pub fn parse_interval(raw: &str, now: Timestamp, tz: &TimeZone) -> Result<Interval, ParseError> {
     let invalid = || ParseError::UnrecognizedValue(raw.to_string());
     let (start_part, end_part) = raw.split_once('/').ok_or_else(invalid)?;
 
@@ -281,7 +284,7 @@ pub fn parse_interval(
         parse_time_value(end_part, now, tz)?
     };
 
-    Ok((start, end))
+    Ok(Interval { start, end })
 }
 
 #[cfg(test)]
@@ -468,9 +471,9 @@ mod tests {
         #[case] expected_end_epoch: i64,
     ) {
         let now = Timestamp::UNIX_EPOCH;
-        let (start, end) = parse_interval(raw, now, &TimeZone::UTC).unwrap();
-        check!(start.as_second() == expected_start_epoch);
-        check!(end.as_second() == expected_end_epoch);
+        let interval = parse_interval(raw, now, &TimeZone::UTC).unwrap();
+        check!(interval.start.as_second() == expected_start_epoch);
+        check!(interval.end.as_second() == expected_end_epoch);
     }
 
     #[rstest]

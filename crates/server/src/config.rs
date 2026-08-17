@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use std::net::{IpAddr, Ipv4Addr};
 use tracing::Level;
 
 /// Application environment configuration.
@@ -42,14 +43,14 @@ impl Configuration {
             .expect("Failed to parse configuration")
     }
 
-    /// Returns the socket address to bind to based on environment.
+    /// Returns the IP address to bind to based on environment.
     ///
     /// - Production: 0.0.0.0 (all interfaces)
     /// - Development: 127.0.0.1 (localhost only)
-    pub fn socket_addr(&self) -> [u8; 4] {
+    pub fn socket_addr(&self) -> IpAddr {
         match self.env {
-            Environment::Production => [0, 0, 0, 0],
-            Environment::Development => [127, 0, 0, 1],
+            Environment::Production => IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+            Environment::Development => IpAddr::V4(Ipv4Addr::LOCALHOST),
         }
     }
 

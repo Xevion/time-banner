@@ -35,7 +35,7 @@ async fn main() {
 
     let app = build_router();
 
-    let addr = SocketAddr::from((config.socket_addr(), config.port));
+    let addr = SocketAddr::new(config.socket_addr(), config.port);
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
 
     let local_addr = listener.local_addr().unwrap();

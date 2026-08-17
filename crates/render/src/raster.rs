@@ -41,7 +41,7 @@ impl Rasterizer {
             ..Default::default()
         };
         usvg::Tree::from_data(svg_data, &opt)
-            .map_err(|e| RenderError::Rasterize(format!("Failed to parse SVG: {}", e)))
+            .map_err(|e| RenderError::rasterize("failed to parse SVG", e))
     }
 
     /// Rasterizes a parsed tree, applying the banner's fixed 10% zoom-out.
@@ -67,32 +67,33 @@ impl Rasterizer {
     pub fn render(&self, svg_data: Vec<u8>) -> Result<Vec<u8>, RenderError> {
         let tree = self.parse(&svg_data)?;
         let pixmap = self.rasterize(&tree);
-        encode_png(pixmap)
-    }
-}
-
-/// Encodes a pixmap as PNG, favoring encode speed over file size: banners are
-/// small, mostly-flat images generated fresh per request, not archived.
-pub fn encode_png(pixmap: tiny_skia::Pixmap) -> Result<Vec<u8>, RenderError> {
-    let width = pixmap.width();
-    let height = pixmap.height();
-    let demultiplied = pixmap.take_demultiplied();
-
-    let mut data = Vec::new();
-    {
-        let mut encoder = png::Encoder::new(&mut data, width, height);
-        encoder.set_color(png::ColorType::Rgba);
-        encoder.set_depth(png::BitDepth::Eight);
-        encoder.set_compression(png::Compression::Fast);
-        let mut writer = encoder
-            .write_header()
-            .map_err(|e| RenderError::Rasterize(format!("Failed to encode PNG: {}", e)))?;
-        writer
-            .write_image_data(&demultiplied)
-            .map_err(|e| RenderError::Rasterize(format!("Failed to encode PNG: {}", e)))?;
+        Self::encode_png(pixmap)
     }
 
-    Ok(data)
+    /// Encodes a pixmap as PNG, favoring encode speed over file size: banners
+    /// are small, mostly-flat images generated fresh per request, not
+    /// archived.
+    pub fn encode_png(pixmap: tiny_skia::Pixmap) -> Result<Vec<u8>, RenderError> {
+        let width = pixmap.width();
+        let height = pixmap.height();
+        let demultiplied = pixmap.take_demultiplied();
+
+        let mut data = Vec::new();
+        {
+            let mut encoder = png::Encoder::new(&mut data, width, height);
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            encoder.set_compression(png::Compression::Fast);
+            let mut writer = encoder
+                .write_header()
+                .map_err(|e| RenderError::rasterize("failed to encode PNG", e))?;
+            writer
+                .write_image_data(&demultiplied)
+                .map_err(|e| RenderError::rasterize("failed to encode PNG", e))?;
+        }
+
+        Ok(data)
+    }
 }
 
 #[cfg(test)]
@@ -126,7 +127,7 @@ mod tests {
     fn encoded_png_has_a_valid_signature(rasterizer: &Rasterizer) {
         let tree = rasterizer.parse(TINY_SVG.as_bytes()).unwrap();
         let pixmap = rasterizer.rasterize(&tree);
-        let bytes = encode_png(pixmap).unwrap();
+        let bytes = Rasterizer::encode_png(pixmap).unwrap();
         assert!(bytes.starts_with(&[0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1a, b'\n']));
     }
 

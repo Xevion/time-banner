@@ -14,6 +14,7 @@ use jiff::{Timestamp, tz::TimeZone};
 use time_banner_core::{parse_time_value, resolve_timezone};
 
 use crate::error::TimeBannerError;
+use crate::utils::HeaderMapExt;
 
 /// The request axes resolved once, ahead of the handler.
 #[derive(Clone)]
@@ -36,33 +37,33 @@ impl Resolution {
         let magnitude = seconds.abs();
         format!("{sign}{:02}:{:02}", magnitude / 3600, magnitude % 3600 / 60)
     }
-}
 
-/// Resolves both axes, timezone first, since a civil date's meaning depends
-/// on the zone it is read in.
-fn resolve(uri: &Uri, headers: &HeaderMap) -> Result<Resolution, TimeBannerError> {
-    let params = Query::<HashMap<String, String>>::try_from_uri(uri)
-        .map(|Query(params)| params)
-        .unwrap_or_default();
-    let param_or_header = |name: &str, header_name: &str| {
-        params
-            .get(name)
-            .map(String::as_str)
-            .or_else(|| header_str(headers, header_name))
-    };
+    /// Resolves both axes, timezone first, since a civil date's meaning
+    /// depends on the zone it is read in.
+    fn resolve(uri: &Uri, headers: &HeaderMap) -> Result<Resolution, TimeBannerError> {
+        let params = Query::<HashMap<String, String>>::try_from_uri(uri)
+            .map(|Query(params)| params)
+            .unwrap_or_default();
+        let param_or_header = |name: &str, header_name: &str| {
+            params
+                .get(name)
+                .map(String::as_str)
+                .or_else(|| headers.get_str(header_name))
+        };
 
-    let tz = match param_or_header("tz", "timezone") {
-        Some(spec) => resolve_timezone(spec)?,
-        None => TimeZone::UTC,
-    };
+        let tz = match param_or_header("tz", "timezone") {
+            Some(spec) => resolve_timezone(spec)?,
+            None => TimeZone::UTC,
+        };
 
-    let wall_clock = Timestamp::now();
-    let now = match param_or_header("now", "date-now") {
-        Some(raw) => parse_time_value(raw, wall_clock, &tz)?,
-        None => wall_clock,
-    };
+        let wall_clock = Timestamp::now();
+        let now = match param_or_header("now", "date-now") {
+            Some(raw) => parse_time_value(raw, wall_clock, &tz)?,
+            None => wall_clock,
+        };
 
-    Ok(Resolution { now, tz })
+        Ok(Resolution { now, tz })
+    }
 }
 
 /// Resolves the request axes before the handler runs, and reports the zone
@@ -72,7 +73,7 @@ pub async fn resolve_request(
     mut request: Request,
     next: Next,
 ) -> Result<Response, TimeBannerError> {
-    let resolution = resolve(request.uri(), request.headers())?;
+    let resolution = Resolution::resolve(request.uri(), request.headers())?;
     let label = resolution.timezone_label();
     request.extensions_mut().insert(resolution);
 
@@ -102,10 +103,6 @@ impl<S: Send + Sync> FromRequestParts<S> for Resolution {
     }
 }
 
-fn header_str<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
-    headers.get(name).and_then(|v| v.to_str().ok())
-}
-
 #[cfg(test)]
 mod tests {
     use assert2::check;
@@ -114,7 +111,7 @@ mod tests {
     use super::*;
 
     fn resolve_request_parts(request: Request<()>) -> Result<Resolution, TimeBannerError> {
-        resolve(request.uri(), request.headers())
+        Resolution::resolve(request.uri(), request.headers())
     }
 
     fn now_of(request: Request<()>) -> Result<Timestamp, TimeBannerError> {

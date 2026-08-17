@@ -48,11 +48,18 @@ pub struct RenderContext {
     pub now: Timestamp,
 }
 
-/// Calculates clock hand positions for a given time.
+/// A 2D point in the clock face's coordinate space.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Point {
+    x: f64,
+    y: f64,
+}
+
+/// Calculates clock hand endpoints for a given time.
 ///
-/// Returns (hour_x, hour_y, minute_x, minute_y) coordinates for SVG rendering.
-/// Clock center is at (16, 16) with appropriate hand lengths for a 32x32 favicon.
-fn calculate_clock_hands(time: Timestamp, tz: &TimeZone) -> (f64, f64, f64, f64) {
+/// Returns (hour, minute) endpoints for SVG rendering. Clock center is at
+/// (16, 16) with appropriate hand lengths for a 32x32 favicon.
+fn calculate_clock_hands(time: Timestamp, tz: &TimeZone) -> (Point, Point) {
     let zoned = time.to_zoned(tz.clone());
     let hour = zoned.hour() as f64;
     let minute = zoned.minute() as f64;
@@ -72,12 +79,16 @@ fn calculate_clock_hands(time: Timestamp, tz: &TimeZone) -> (f64, f64, f64, f64)
     let minute_length = 11.0; // Longer minute hand
 
     // Calculate end positions
-    let hour_x = center_x + hour_length * hour_rad.cos();
-    let hour_y = center_y + hour_length * hour_rad.sin();
-    let minute_x = center_x + minute_length * minute_rad.cos();
-    let minute_y = center_y + minute_length * minute_rad.sin();
+    let hour_point = Point {
+        x: center_x + hour_length * hour_rad.cos(),
+        y: center_y + hour_length * hour_rad.sin(),
+    };
+    let minute_point = Point {
+        x: center_x + minute_length * minute_rad.cos(),
+        y: center_y + minute_length * minute_rad.sin(),
+    };
 
-    (hour_x, hour_y, minute_x, minute_y)
+    (hour_point, minute_point)
 }
 
 /// Font size (px) used by "basic.svg", and its approximate monospace
@@ -103,52 +114,48 @@ fn insert_basic_text(template_context: &mut Context, text: &str) {
 /// this the default rather than the only option.
 const ABSOLUTE_FORMAT: &str = "%Y-%m-%d %H:%M:%S %Z";
 
-/// Renders a time value using the appropriate template.
-///
-/// Uses different templates based on output form:
-/// - Relative/Absolute: "basic.svg" with text content
-/// - Clock: "clock.svg" with calculated hand positions
-pub fn render_template(context: RenderContext) -> Result<String, RenderError> {
-    let mut template_context = Context::new();
+impl RenderContext {
+    /// Renders this time value using the appropriate template.
+    ///
+    /// Uses different templates based on output form:
+    /// - Relative/Absolute: "basic.svg" with text content
+    /// - Clock: "clock.svg" with calculated hand positions
+    pub fn render_svg(self) -> Result<String, RenderError> {
+        let mut template_context = Context::new();
 
-    let rendered = match context.output_form {
-        OutputForm::Relative => {
-            let elapsed = context.value.duration_since(context.now).unsigned_abs();
-            let mut formatter = Formatter::new();
-            if context.value > context.now {
-                formatter.ago("from now");
+        let rendered = match self.output_form {
+            OutputForm::Relative => {
+                let elapsed = self.value.duration_since(self.now).unsigned_abs();
+                let mut formatter = Formatter::new();
+                if self.value > self.now {
+                    formatter.ago("from now");
+                }
+                let text = formatter.convert(elapsed);
+                insert_basic_text(&mut template_context, &text);
+                TEMPLATES.render("basic.svg", &template_context)
             }
-            let text = formatter.convert(elapsed);
-            insert_basic_text(&mut template_context, &text);
-            TEMPLATES.render("basic.svg", &template_context)
-        }
-        OutputForm::Absolute => {
-            let zoned = context.value.to_zoned(context.tz.clone());
-            let text = strtime::format(ABSOLUTE_FORMAT, &zoned)
-                .map_err(|e| RenderError::Template(format!("time formatting failed: {}", e)))?;
-            insert_basic_text(&mut template_context, &text);
-            TEMPLATES.render("basic.svg", &template_context)
-        }
-        OutputForm::Clock => {
-            let (hour_x, hour_y, minute_x, minute_y) =
-                calculate_clock_hands(context.value, &context.tz);
+            OutputForm::Absolute => {
+                let zoned = self.value.to_zoned(self.tz.clone());
+                let text = strtime::format(ABSOLUTE_FORMAT, &zoned)
+                    .map_err(|e| RenderError::template("time formatting failed", e))?;
+                insert_basic_text(&mut template_context, &text);
+                TEMPLATES.render("basic.svg", &template_context)
+            }
+            OutputForm::Clock => {
+                let (hour, minute) = calculate_clock_hands(self.value, &self.tz);
 
-            // Format to 2 decimal places to avoid precision issues
-            let hour_x_str = format!("{:.2}", hour_x);
-            let hour_y_str = format!("{:.2}", hour_y);
-            let minute_x_str = format!("{:.2}", minute_x);
-            let minute_y_str = format!("{:.2}", minute_y);
+                // Format to 2 decimal places to avoid precision issues
+                template_context.insert("hour_x", &format!("{:.2}", hour.x));
+                template_context.insert("hour_y", &format!("{:.2}", hour.y));
+                template_context.insert("minute_x", &format!("{:.2}", minute.x));
+                template_context.insert("minute_y", &format!("{:.2}", minute.y));
 
-            template_context.insert("hour_x", &hour_x_str);
-            template_context.insert("hour_y", &hour_y_str);
-            template_context.insert("minute_x", &minute_x_str);
-            template_context.insert("minute_y", &minute_y_str);
+                TEMPLATES.render("clock.svg", &template_context)
+            }
+        };
 
-            TEMPLATES.render("clock.svg", &template_context)
-        }
-    };
-
-    rendered.map_err(|e| RenderError::Template(e.to_string()))
+        rendered.map_err(|e| RenderError::template("template rendering failed", e))
+    }
 }
 
 /// A single live example shown on the index page.
@@ -222,7 +229,8 @@ mod tests {
     #[test]
     fn basic_svg_declares_explicit_size() {
         let now = Timestamp::now();
-        let svg = render_template(context(now, now, OutputForm::Absolute))
+        let svg = context(now, now, OutputForm::Absolute)
+            .render_svg()
             .expect("basic.svg should render");
         assert!(svg.contains("viewBox="));
         assert!(!svg.contains("width=\"0\""));
@@ -232,7 +240,8 @@ mod tests {
     fn future_relative_time_does_not_render_unknown() {
         let now = Timestamp::now();
         let future = now.checked_add(1.hour()).unwrap();
-        let svg = render_template(context(future, now, OutputForm::Relative))
+        let svg = context(future, now, OutputForm::Relative)
+            .render_svg()
             .expect("basic.svg should render");
         assert!(!svg.contains("???"));
         assert!(svg.contains("from now"));
@@ -249,13 +258,14 @@ mod tests {
         let value = fixed_instant();
         let chicago = TimeZone::get("America/Chicago").unwrap();
 
-        let svg = render_template(RenderContext {
+        let svg = RenderContext {
             value,
             output_form: OutputForm::Absolute,
             output_format: crate::pipeline::OutputFormat::Svg,
             tz: chicago,
             now: value,
-        })
+        }
+        .render_svg()
         .expect("basic.svg should render");
 
         assert!(svg.contains("2023-11-14 16:13:20 CST"));
@@ -265,13 +275,14 @@ mod tests {
     fn absolute_renders_the_offset_when_the_zone_has_no_abbreviation() {
         let value = fixed_instant();
 
-        let svg = render_template(RenderContext {
+        let svg = RenderContext {
             value,
             output_form: OutputForm::Absolute,
             output_format: crate::pipeline::OutputFormat::Svg,
             tz: TimeZone::fixed(jiff::tz::offset(-6)),
             now: value,
-        })
+        }
+        .render_svg()
         .expect("basic.svg should render");
 
         assert!(svg.contains("2023-11-14 16:13:20 -06"));

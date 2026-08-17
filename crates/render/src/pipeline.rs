@@ -5,7 +5,7 @@ use jiff::{Timestamp, tz::TimeZone};
 
 use crate::error::RenderError;
 use crate::raster::Rasterizer;
-use crate::template::{OutputForm, RenderContext, render_template};
+use crate::template::{OutputForm, RenderContext};
 
 /// Shared rasterizer, built once and reused across requests.
 static RASTERIZER: LazyLock<Rasterizer> = LazyLock::new(Rasterizer::new);
@@ -17,15 +17,18 @@ pub enum OutputFormat {
     Png,
 }
 
-impl OutputFormat {
-    /// Determines output format from file extension. Defaults to SVG for unknown extensions.
-    pub fn from_extension(ext: &str) -> Self {
+impl From<&str> for OutputFormat {
+    /// Determines output format from a file extension. Defaults to SVG for
+    /// unknown extensions.
+    fn from(ext: &str) -> Self {
         match ext {
             "png" => OutputFormat::Png,
             _ => OutputFormat::Svg,
         }
     }
+}
 
+impl OutputFormat {
     #[allow(dead_code)]
     pub fn from_mime_type(mime_type: &str) -> Self {
         match mime_type {
@@ -42,33 +45,35 @@ impl OutputFormat {
             OutputFormat::Png => "image/png",
         }
     }
-}
 
-/// Converts SVG to the requested format. PNG requires rasterization.
-pub fn handle_rasterize(data: String, format: &OutputFormat) -> Result<Vec<u8>, RenderError> {
-    match format {
-        OutputFormat::Svg => Ok(data.into_bytes()),
-        OutputFormat::Png => RASTERIZER.render(data.into_bytes()),
+    /// Encodes rendered SVG source into this format. PNG requires rasterization.
+    pub fn encode(&self, svg: String) -> Result<Vec<u8>, RenderError> {
+        match self {
+            OutputFormat::Svg => Ok(svg.into_bytes()),
+            OutputFormat::Png => RASTERIZER.render(svg.into_bytes()),
+        }
     }
 }
 
-/// Main rendering pipeline: template -> SVG -> optional rasterization -> encoded bytes.
-pub fn render_time(context: RenderContext) -> Result<Vec<u8>, RenderError> {
-    let output_format = context.output_format.clone();
-    let rendered_template = render_template(context)?;
-
-    handle_rasterize(rendered_template, &output_format)
+impl RenderContext {
+    /// Main rendering pipeline: template -> SVG -> optional rasterization -> encoded bytes.
+    pub fn render(self) -> Result<Vec<u8>, RenderError> {
+        let format = self.output_format.clone();
+        let svg = self.render_svg()?;
+        format.encode(svg)
+    }
 }
 
 /// Generates PNG bytes for the favicon clock, with hands in `tz`.
 pub fn generate_favicon_png_bytes(time: Timestamp, tz: TimeZone) -> Result<Vec<u8>, RenderError> {
-    render_time(RenderContext {
+    RenderContext {
         value: time,
         output_form: OutputForm::Clock,
         output_format: OutputFormat::Png,
         tz,
         now: time,
-    })
+    }
+    .render()
 }
 
 /// Converts PNG bytes to ICO format using the ico crate.
@@ -77,17 +82,17 @@ pub fn convert_png_to_ico(png_bytes: &[u8]) -> Result<Vec<u8>, RenderError> {
 
     let cursor = Cursor::new(png_bytes);
     let image = ico::IconImage::read_png(cursor)
-        .map_err(|e| RenderError::Encode(format!("Failed to read PNG data: {}", e)))?;
+        .map_err(|e| RenderError::encode("failed to read PNG data", e))?;
 
     icon_dir.add_entry(
         ico::IconDirEntry::encode(&image)
-            .map_err(|e| RenderError::Encode(format!("Failed to encode icon entry: {}", e)))?,
+            .map_err(|e| RenderError::encode("failed to encode icon entry", e))?,
     );
 
     let mut ico_buffer = Vec::new();
     icon_dir
         .write(&mut ico_buffer)
-        .map_err(|e| RenderError::Encode(format!("Failed to write ICO data: {}", e)))?;
+        .map_err(|e| RenderError::encode("failed to write ICO data", e))?;
 
     Ok(ico_buffer)
 }
@@ -111,13 +116,14 @@ mod tests {
         #[values(OutputFormat::Svg, OutputFormat::Png)] format: OutputFormat,
     ) {
         let now = Timestamp::from_second(1_700_000_000).unwrap();
-        let bytes = render_time(RenderContext {
+        let bytes = RenderContext {
             value: now,
             output_form: form,
             output_format: format.clone(),
             tz: TimeZone::UTC,
             now,
-        })
+        }
+        .render()
         .unwrap();
 
         match format {

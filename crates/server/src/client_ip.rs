@@ -4,6 +4,7 @@
 //! (Railway) -> socket peer address.
 
 use crate::error::TimeBannerError;
+use crate::utils::HeaderMapExt;
 use axum::extract::{ConnectInfo, FromRequestParts};
 use http::request::Parts;
 use std::net::{IpAddr, SocketAddr};
@@ -16,14 +17,16 @@ impl<S: Send + Sync> FromRequestParts<S> for ClientIp {
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         // CF-Connecting-IP -- set by Cloudflare, most trustworthy.
-        if let Some(ip) =
-            header_str(&parts.headers, "cf-connecting-ip").and_then(|s| s.parse::<IpAddr>().ok())
+        if let Some(ip) = parts
+            .headers
+            .get_str("cf-connecting-ip")
+            .and_then(|s| s.parse::<IpAddr>().ok())
         {
             return Ok(ClientIp(ip));
         }
 
         // Rightmost X-Forwarded-For -- appended by Railway's edge proxy.
-        if let Some(xff) = header_str(&parts.headers, "x-forwarded-for")
+        if let Some(xff) = parts.headers.get_str("x-forwarded-for")
             && let Some(ip) = xff
                 .rsplit(',')
                 .next()
@@ -42,8 +45,4 @@ impl<S: Send + Sync> FromRequestParts<S> for ClientIp {
             "Unable to determine client IP".to_string(),
         ))
     }
-}
-
-fn header_str<'a>(headers: &'a http::HeaderMap, name: &str) -> Option<&'a str> {
-    headers.get(name).and_then(|v| v.to_str().ok())
 }

@@ -10,15 +10,15 @@ use jiff::tz::TimeZone;
 use time_banner_core::parse_time_value;
 use time_banner_render::{
     OutputForm, OutputFormat, RenderContext, convert_png_to_ico, generate_favicon_png_bytes,
-    render_time, template::render_index_page,
+    template::render_index_page,
 };
 
 /// Renders a time value, moving actual rasterization off the async executor
 /// for PNG output. SVG output never rasterizes, so it stays inline.
 async fn render_time_async(context: RenderContext) -> Result<Vec<u8>, TimeBannerError> {
     match context.output_format {
-        OutputFormat::Svg => render_time(context).map_err(TimeBannerError::from),
-        OutputFormat::Png => tokio::task::spawn_blocking(move || render_time(context))
+        OutputFormat::Svg => context.render().map_err(TimeBannerError::from),
+        OutputFormat::Png => tokio::task::spawn_blocking(move || context.render())
             .await
             .map_err(|e| TimeBannerError::Internal(format!("render task panicked: {}", e)))?
             .map_err(TimeBannerError::from),
@@ -43,7 +43,7 @@ async fn banner(
     resolution: Resolution,
 ) -> Result<impl IntoResponse, TimeBannerError> {
     let (raw_time, extension) = parse_path(&path);
-    let output_format = OutputFormat::from_extension(extension);
+    let output_format = OutputFormat::from(extension);
     let mime_type = output_format.mime_type();
 
     let value = parse_time_value(raw_time, resolution.now, &resolution.tz)?;

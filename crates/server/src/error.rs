@@ -7,7 +7,7 @@ use serde::Serialize;
 pub enum TimeBannerError {
     /// Input parsing errors (invalid time formats, bad parameters, etc.)
     #[error("Parse error: {0}")]
-    ParseError(String),
+    ParseError(#[from] time_banner_core::ParseError),
     /// Template rendering failures
     #[error("Render error: {0}")]
     RenderError(String),
@@ -29,18 +29,14 @@ struct ErrorResponse {
     message: String,
 }
 
-impl From<time_banner_core::ParseError> for TimeBannerError {
-    fn from(e: time_banner_core::ParseError) -> Self {
-        TimeBannerError::ParseError(e.to_string())
-    }
-}
-
 impl From<time_banner_render::RenderError> for TimeBannerError {
     fn from(e: time_banner_render::RenderError) -> Self {
+        use time_banner_render::RenderError;
+        let message = e.to_string();
         match e {
-            time_banner_render::RenderError::Template(msg) => TimeBannerError::RenderError(msg),
-            time_banner_render::RenderError::Rasterize(msg) => TimeBannerError::RasterizeError(msg),
-            time_banner_render::RenderError::Encode(msg) => TimeBannerError::RenderError(msg),
+            RenderError::Template { .. } => TimeBannerError::RenderError(message),
+            RenderError::Rasterize { .. } => TimeBannerError::RasterizeError(message),
+            RenderError::Encode { .. } => TimeBannerError::RenderError(message),
         }
     }
 }

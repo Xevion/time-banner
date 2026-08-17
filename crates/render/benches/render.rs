@@ -6,9 +6,9 @@ use std::time::Duration;
 
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
 use jiff::{Timestamp, tz::TimeZone};
-use time_banner_render::raster::{Rasterizer, encode_png};
-use time_banner_render::template::{RenderContext, render_template};
-use time_banner_render::{OutputForm, OutputFormat, render_time};
+use time_banner_render::raster::Rasterizer;
+use time_banner_render::template::RenderContext;
+use time_banner_render::{OutputForm, OutputFormat};
 
 /// Fixed reference instant so bench output is stable across runs.
 const NOW_EPOCH: i64 = 1_700_000_000;
@@ -45,18 +45,20 @@ fn context_in(offset: i64, form: OutputForm, format: OutputFormat) -> RenderCont
 }
 
 fn svg_for(offset: i64, form: OutputForm) -> String {
-    render_template(context(offset, form)).expect("template renders")
+    context(offset, form)
+        .render_svg()
+        .expect("template renders")
 }
 
 fn bench_template(c: &mut Criterion) {
     let mut group = c.benchmark_group("template");
     for &(label, offset) in DURATIONS {
         group.bench_function(label, |b| {
-            b.iter(|| render_template(context(offset, OutputForm::Relative)).unwrap())
+            b.iter(|| context(offset, OutputForm::Relative).render_svg().unwrap())
         });
     }
     group.bench_function("absolute", |b| {
-        b.iter(|| render_template(context(0, OutputForm::Absolute)).unwrap())
+        b.iter(|| context(0, OutputForm::Absolute).render_svg().unwrap())
     });
     group.finish();
 }
@@ -100,7 +102,7 @@ fn bench_encode_png(c: &mut Criterion) {
         group.bench_function(label, |b| {
             b.iter_batched(
                 || pixmap.clone(),
-                |pm| encode_png(pm).unwrap(),
+                |pm| Rasterizer::encode_png(pm).unwrap(),
                 BatchSize::SmallInput,
             )
         });
@@ -115,10 +117,10 @@ fn bench_end_to_end_case(
     form: OutputForm,
     format: OutputFormat,
 ) {
-    let bytes = render_time(context_in(offset, form, format.clone())).unwrap();
+    let bytes = context_in(offset, form, format.clone()).render().unwrap();
     group.throughput(Throughput::Bytes(bytes.len() as u64));
     group.bench_function(id, |b| {
-        b.iter(|| render_time(context_in(offset, form, format.clone())).unwrap())
+        b.iter(|| context_in(offset, form, format.clone()).render().unwrap())
     });
 }
 

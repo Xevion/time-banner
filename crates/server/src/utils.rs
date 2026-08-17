@@ -1,5 +1,19 @@
 //! General utility functions used across the application.
 
+use http::HeaderMap;
+
+/// Reads a header's value as a `&str`, treating missing or non-ASCII values
+/// alike as absent.
+pub trait HeaderMapExt {
+    fn get_str(&self, name: &str) -> Option<&str>;
+}
+
+impl HeaderMapExt for HeaderMap {
+    fn get_str(&self, name: &str) -> Option<&str> {
+        self.get(name).and_then(|v| v.to_str().ok())
+    }
+}
+
 /// Splits a path on the last dot to extract filename and extension.
 /// Returns None for dotfiles (paths starting with a dot).
 pub fn split_on_extension(path: &str) -> Option<(&str, &str)> {
