@@ -2,6 +2,7 @@
 
 pub mod abbr_tz;
 pub mod error;
+pub mod geoip;
 pub mod tz;
 pub mod value;
 

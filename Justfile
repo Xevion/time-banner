@@ -32,6 +32,12 @@ test: fonts
 fonts:
     cargo run -p xtask -- fonts
 
+# Convert a DB-IP City Lite .mmdb into crates/core/geoip/geoip.bin.
+# Needs DBIP_MMDB_PATH set (or pass `--input <path>`) -- not required to
+# build or test, since the table is memory-mapped at runtime, not compiled in.
+geoip *args:
+    cargo run -p xtask -- geoip {{args}}
+
 # Build release binary
 build: fonts
     cargo build --release

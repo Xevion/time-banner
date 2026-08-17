@@ -19,6 +19,7 @@ regex = "1.11.1"
 phf = { version = "0.14", default-features = false }
 thiserror = "2.0"
 jiff = { version = "0.2.35", features = ["tzdb-bundle-always"] }
+memmap2 = "0.9.11"
 
 [build-dependencies]
 regex = "1.11.1"

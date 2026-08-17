@@ -14,5 +14,9 @@ path = "src/main.rs"
 
 [dependencies]
 assert2.workspace = true
+ipnetwork = "0.21.1"
+maxminddb = "0.30.0"
+serde = { version = "1.0.229", features = ["derive"] }
 sha2 = "0.10"
 ureq = "3"
+utz = { version = "0.4.1", default-features = false, features = ["balanced"] }

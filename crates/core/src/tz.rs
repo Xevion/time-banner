@@ -35,8 +35,12 @@ pub fn resolve(spec: &str) -> Result<TimeZone, ParseError> {
         return Err(unknown());
     }
 
-    // Geolocation is not wired up yet, and section 6.2 makes a geolocation
-    // miss fall through to UTC rather than error, so `auto` resolves there.
+    // `auto` always resolves to UTC here: geolocation needs a client
+    // address, which is a request-level concern this pure spec-parser
+    // doesn't have. `crate::geoip` does the actual lookup; the server
+    // intercepts `auto` before it reaches this function and only falls
+    // back to this branch (matching section 6.2's best-effort miss) when no
+    // geoip database is configured or the address doesn't resolve.
     if trimmed.eq_ignore_ascii_case("auto") {
         return Ok(TimeZone::UTC);
     }

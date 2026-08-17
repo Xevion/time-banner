@@ -8,7 +8,7 @@ use tower_http::compression::CompressionLayer;
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
 
-use crate::resolve::resolve_request;
+use crate::resolve::{GeoipState, resolve_request};
 use crate::routes::{
     absolute_handler, fallback_handler, favicon_handler, favicon_png_handler, implicit_handler,
     index_handler, relative_handler,
@@ -24,8 +24,10 @@ pub mod utils;
 
 /// Builds the application router, including routes and shared middleware.
 /// Split out from `main` so integration tests can exercise it without
-/// binding a socket.
-pub fn build_router() -> Router {
+/// binding a socket. `geoip` is `None` in tests and whenever no database is
+/// configured or it failed to load; `?tz=auto` best-effort-falls-through to
+/// `UTC` in that case (SPEC.md section 6.2).
+pub fn build_router(geoip: GeoipState) -> Router {
     Router::new()
         .route("/", get(index_handler))
         .route("/health", get(health_handler))
@@ -49,7 +51,7 @@ pub fn build_router() -> Router {
                 .gzip(true)
                 .quality(tower_http::CompressionLevel::Fastest),
         ))
-        .layer(axum::middleware::from_fn(resolve_request))
+        .layer(axum::middleware::from_fn_with_state(geoip, resolve_request))
         .layer(axum::middleware::map_response(add_server_header))
 }
 

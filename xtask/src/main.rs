@@ -3,6 +3,9 @@
 //!
 //! `cargo xtask fonts` fetches the bundled font files into `crates/render/fonts/`,
 //! skipping any file whose SHA-256 already matches, so it's safe to re-run.
+//!
+//! `cargo xtask geoip` converts a DB-IP City Lite `.mmdb` into the compact
+//! `geoip.bin` table `crates/core` memory-maps at runtime; see `geoip.rs`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -10,6 +13,8 @@ use std::time::Duration;
 
 use assert2::assert;
 use sha2::{Digest, Sha256};
+
+mod geoip;
 
 /// Fetch attempts before giving up. `raw.githubusercontent.com` rate-limits
 /// per IP, and CI runners share IP ranges, so transient 429s are expected.
@@ -138,15 +143,19 @@ fn fetch_fonts() {
 }
 
 fn main() {
-    let task = std::env::args().nth(1);
+    let mut args = std::env::args().skip(1);
+    let task = args.next();
+    let rest: Vec<String> = args.collect();
+
     match task.as_deref() {
         Some("fonts") => fetch_fonts(),
+        Some("geoip") => geoip::convert(&rest),
         Some(other) => {
-            eprintln!("unknown xtask: {other}\nAvailable: fonts");
+            eprintln!("unknown xtask: {other}\nAvailable: fonts, geoip");
             std::process::exit(1);
         }
         None => {
-            eprintln!("usage: cargo xtask <task>\nAvailable: fonts");
+            eprintln!("usage: cargo xtask <task>\nAvailable: fonts, geoip");
             std::process::exit(1);
         }
     }

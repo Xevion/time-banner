@@ -1,8 +1,10 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Duration;
 
 use time_banner::build_router;
 use time_banner::config::Configuration;
+use time_banner_core::geoip::GeoipDb;
 use tracing_subscriber::EnvFilter;
 
 /// How long the server waits for in-flight requests to drain after a shutdown
@@ -33,7 +35,25 @@ async fn main() {
             .init();
     }
 
-    let app = build_router();
+    let geoip = config
+        .geoip_db_path
+        .as_deref()
+        .and_then(|path| match GeoipDb::open(path) {
+            Ok(db) => {
+                tracing::info!(path = %path.display(), "loaded geoip database");
+                Some(Arc::new(db))
+            }
+            Err(error) => {
+                tracing::warn!(
+                    %error,
+                    path = %path.display(),
+                    "failed to load geoip database, ?tz=auto will fall back to UTC"
+                );
+                None
+            }
+        });
+
+    let app = build_router(geoip);
 
     let addr = SocketAddr::new(config.socket_addr(), config.port);
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();

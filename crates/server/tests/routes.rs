@@ -9,10 +9,11 @@ use http_body_util::BodyExt;
 use rstest::{fixture, rstest};
 use tower::ServiceExt;
 
-/// A fresh router per test. Cheap to build (no I/O), so no `#[once]` sharing.
+/// A fresh router per test. Cheap to build (no I/O, no geoip database), so
+/// no `#[once]` sharing.
 #[fixture]
 fn router() -> Router {
-    time_banner::build_router()
+    time_banner::build_router(None)
 }
 
 async fn get(router: Router, uri: &str) -> axum::http::Response<Body> {
