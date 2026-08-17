@@ -3,8 +3,9 @@
 //! Parses strings like "1y2mon3w4d5h6m7s", "+1year", or "-3h30m" into chrono Duration objects.
 //! Time units can appear in any order and use various abbreviations.
 
+use std::sync::LazyLock;
+
 use chrono::{DateTime, Duration, Utc};
-use lazy_static::lazy_static;
 use regex::Regex;
 
 use crate::error::TimeBannerError;
@@ -24,21 +25,21 @@ impl Months for Duration {
     }
 }
 
-lazy_static! {
-    /// Regex pattern matching duration strings with flexible ordering and abbreviations.
-    ///
-    /// Supports:
-    /// - Optional +/- sign
-    /// - Years: y, yr, yrs, year, years
-    /// - Months: mon, month, months
-    /// - Weeks: w, wk, wks, week, weeks
-    /// - Days: d, day, days
-    /// - Hours: h, hr, hrs, hour, hours
-    /// - Minutes: m, min, mins, minute, minutes
-    /// - Seconds: s, sec, secs, second, seconds
-    ///
-    /// Time units must appear in descending order of magnitude, e.g. "1y2d" is valid, "1d2y" is not.
-    static ref FULL_RELATIVE_PATTERN: Regex = Regex::new(concat!(
+/// Regex pattern matching duration strings with flexible ordering and abbreviations.
+///
+/// Supports:
+/// - Optional +/- sign
+/// - Years: y, yr, yrs, year, years
+/// - Months: mon, month, months
+/// - Weeks: w, wk, wks, week, weeks
+/// - Days: d, day, days
+/// - Hours: h, hr, hrs, hour, hours
+/// - Minutes: m, min, mins, minute, minutes
+/// - Seconds: s, sec, secs, second, seconds
+///
+/// Time units must appear in descending order of magnitude, e.g. "1y2d" is valid, "1d2y" is not.
+static FULL_RELATIVE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(concat!(
         "(?<sign>[-+])?",
         r"(?:(?<year>\d+)\s?(?:years?|yrs?|y)\s*)?",
         r"(?:(?<month>\d+)\s?(?:months?|mon)\s*)?",
@@ -48,8 +49,8 @@ lazy_static! {
         r"(?:(?<minute>\d+)\s?(?:minutes?|mins?|m)\s*)?",
         r"(?:(?<second>\d+)\s?(?:seconds?|secs?|s)\s*)?"
     ))
-    .unwrap();
-}
+    .unwrap()
+});
 
 /// Parses a human-readable duration string into a chrono Duration.
 ///
@@ -80,7 +81,7 @@ pub fn parse_duration(str: &str) -> Result<Duration, String> {
                     "Could not parse year from {} ({})",
                     raw_year.as_str(),
                     e
-                ))
+                ));
             }
         };
     }
@@ -93,7 +94,7 @@ pub fn parse_duration(str: &str) -> Result<Duration, String> {
                     "Could not parse month from {} ({})",
                     raw_month.as_str(),
                     e
-                ))
+                ));
             }
         };
     }
@@ -106,7 +107,7 @@ pub fn parse_duration(str: &str) -> Result<Duration, String> {
                     "Could not parse week from {} ({})",
                     raw_week.as_str(),
                     e
-                ))
+                ));
             }
         };
     }
@@ -119,7 +120,7 @@ pub fn parse_duration(str: &str) -> Result<Duration, String> {
                     "Could not parse day from {} ({})",
                     raw_day.as_str(),
                     e
-                ))
+                ));
             }
         };
     }
@@ -132,7 +133,7 @@ pub fn parse_duration(str: &str) -> Result<Duration, String> {
                     "Could not parse hour from {} ({})",
                     raw_hour.as_str(),
                     e
-                ))
+                ));
             }
         };
     }
@@ -145,7 +146,7 @@ pub fn parse_duration(str: &str) -> Result<Duration, String> {
                     "Could not parse minute from {} ({})",
                     raw_minute.as_str(),
                     e
-                ))
+                ));
             }
         };
     }
@@ -158,7 +159,7 @@ pub fn parse_duration(str: &str) -> Result<Duration, String> {
                     "Could not parse second from {} ({})",
                     raw_second.as_str(),
                     e
-                ))
+                ));
             }
         };
     }
@@ -220,7 +221,7 @@ pub fn parse_time_value(raw_time: &str) -> Result<DateTime<Utc>, TimeBannerError
 
 #[cfg(test)]
 mod tests {
-    use crate::duration::{parse_duration, Months};
+    use crate::duration::{Months, parse_duration};
     use chrono::Duration;
 
     #[test]

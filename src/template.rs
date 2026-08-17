@@ -1,34 +1,32 @@
+use std::sync::LazyLock;
+
 use chrono::{DateTime, Timelike, Utc};
-use lazy_static::lazy_static;
 use tera::{Context, Tera};
 use timeago::Formatter;
 
 use crate::render::OutputFormat;
 
-lazy_static! {
-    /// Global Tera template engine instance.
-    static ref TEMPLATES: Tera = {
-        let template_pattern = if cfg!(debug_assertions) {
-            // Development: templates are in src/templates
-            "src/templates/**/*.svg"
-        } else {
-            // Production: templates are in /usr/src/app/templates (relative to working dir)
-            "templates/**/*.svg"
-        };
-
-        match Tera::new(template_pattern) {
-            Ok(t) => {
-                let names: Vec<&str> = t.get_template_names().collect();
-                println!("{} templates found ([{}]).", names.len(), names.join(", "));
-                t
-            }
-            Err(e) => {
-                println!("Parsing error(s): {}", e);
-                ::std::process::exit(1);
-            }
-        }
+/// Global Tera template engine instance.
+static TEMPLATES: LazyLock<Tera> = LazyLock::new(|| {
+    let template_pattern = if cfg!(debug_assertions) {
+        // Development: templates are in src/templates
+        "src/templates/**/*.svg"
+    } else {
+        // Production: templates are in /usr/src/app/templates (relative to working dir)
+        "templates/**/*.svg"
     };
-}
+
+    match Tera::new(template_pattern) {
+        Ok(t) => {
+            let names: Vec<&str> = t.get_template_names().collect();
+            tracing::info!("{} templates found ([{}]).", names.len(), names.join(", "));
+            t
+        }
+        Err(e) => {
+            panic!("Template parsing error(s): {}", e);
+        }
+    }
+});
 
 /// Display format for time values.
 pub enum OutputForm {
@@ -41,6 +39,7 @@ pub enum OutputForm {
 }
 
 /// Timezone specification formats (currently unused but reserved for future features).
+#[allow(dead_code)]
 pub enum TzForm {
     Abbreviation(String), // e.g. "CST"
     Iso(String),          // e.g. "America/Chicago"
@@ -51,12 +50,16 @@ pub enum TzForm {
 pub struct RenderContext {
     pub value: DateTime<Utc>,
     pub output_form: OutputForm,
+    #[allow(dead_code)]
     pub output_format: OutputFormat,
     /// Target timezone (not yet implemented - defaults to UTC)
+    #[allow(dead_code)]
     pub timezone: Option<TzForm>,
     /// Custom time format string (not yet implemented)
+    #[allow(dead_code)]
     pub format: Option<String>,
     /// Reference time for relative calculations (not yet implemented - uses current time)
+    #[allow(dead_code)]
     pub now: Option<i64>,
 }
 
