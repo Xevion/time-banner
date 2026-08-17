@@ -13,7 +13,7 @@
     --muted: #666;
     --border: #ddd;
     --code-bg: #f2f2f0;
-    --accent: #2b5adb;
+    --accent: #3d5a99;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -22,7 +22,7 @@
       --muted: #999;
       --border: #333;
       --code-bg: #1f2023;
-      --accent: #7aa2ff;
+      --accent: #9db4dd;
     }
   }
   * { box-sizing: border-box; }
@@ -58,8 +58,9 @@
   a { color: var(--accent); }
   .example {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 1rem;
+    gap: 0.75rem 1rem;
     padding: 0.75rem 0;
     border-bottom: 1px solid var(--border);
   }
@@ -68,6 +69,9 @@
     background: #fff;
     border: 1px solid var(--border);
     border-radius: 0.3em;
+    padding: 0.4em 0.6em;
+    max-width: 100%;
+    height: auto;
     flex-shrink: 0;
   }
   .example .label {

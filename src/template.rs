@@ -93,6 +93,25 @@ fn calculate_clock_hands(time: DateTime<Utc>) -> (f64, f64, f64, f64) {
     (hour_x, hour_y, minute_x, minute_y)
 }
 
+/// Font size (px) used by "basic.svg", and its approximate monospace
+/// character-advance ratio, used to size the SVG canvas to fit the text.
+const BASIC_FONT_SIZE: f64 = 27.0;
+const BASIC_CHAR_WIDTH_RATIO: f64 = 0.6;
+const BASIC_PADDING_X: f64 = 12.0;
+const BASIC_HEIGHT: f64 = 34.0;
+
+/// Estimates the pixel width needed to render `text` in "basic.svg"'s monospace font.
+fn estimate_basic_width(text: &str) -> f64 {
+    let char_width = BASIC_FONT_SIZE * BASIC_CHAR_WIDTH_RATIO;
+    text.chars().count() as f64 * char_width + BASIC_PADDING_X * 2.0
+}
+
+fn insert_basic_text(template_context: &mut Context, text: &str) {
+    template_context.insert("text", text);
+    template_context.insert("width", &format!("{:.0}", estimate_basic_width(text)));
+    template_context.insert("height", &format!("{:.0}", BASIC_HEIGHT));
+}
+
 /// Renders a time value using the appropriate template.
 ///
 /// Uses different templates based on output form:
@@ -103,12 +122,19 @@ pub fn render_template(context: RenderContext) -> Result<String, tera::Error> {
 
     match context.output_form {
         OutputForm::Relative => {
-            let formatter = Formatter::new();
-            template_context.insert("text", &formatter.convert_chrono(context.value, Utc::now()));
+            let now = Utc::now();
+            let mut formatter = Formatter::new();
+            let text = if context.value > now {
+                formatter.ago("from now");
+                formatter.convert_chrono(now, context.value)
+            } else {
+                formatter.convert_chrono(context.value, now)
+            };
+            insert_basic_text(&mut template_context, &text);
             TEMPLATES.render("basic.svg", &template_context)
         }
         OutputForm::Absolute => {
-            template_context.insert("text", &context.value.to_rfc3339());
+            insert_basic_text(&mut template_context, &context.value.to_rfc3339());
             TEMPLATES.render("basic.svg", &template_context)
         }
         OutputForm::Clock => {
@@ -178,5 +204,36 @@ mod tests {
         let html = render_index_page(Utc::now()).expect("index page should render");
         assert!(html.contains("time-banner"));
         assert!(html.contains("/favicon.ico"));
+    }
+
+    #[test]
+    fn basic_svg_declares_explicit_size() {
+        let svg = render_template(RenderContext {
+            value: Utc::now(),
+            output_form: OutputForm::Absolute,
+            output_format: crate::render::OutputFormat::Svg,
+            timezone: None,
+            format: None,
+            now: None,
+        })
+        .expect("basic.svg should render");
+        assert!(svg.contains("viewBox="));
+        assert!(!svg.contains("width=\"0\""));
+    }
+
+    #[test]
+    fn future_relative_time_does_not_render_unknown() {
+        let future = Utc::now() + chrono::Duration::hours(1);
+        let svg = render_template(RenderContext {
+            value: future,
+            output_form: OutputForm::Relative,
+            output_format: crate::render::OutputFormat::Svg,
+            timezone: None,
+            format: None,
+            now: None,
+        })
+        .expect("basic.svg should render");
+        assert!(!svg.contains("???"));
+        assert!(svg.contains("from now"));
     }
 }
