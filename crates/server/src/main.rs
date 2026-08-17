@@ -37,6 +37,15 @@ async fn main() {
 
     let addr = SocketAddr::from((config.socket_addr(), config.port));
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+
+    let local_addr = listener.local_addr().unwrap();
+    let display_host = if local_addr.ip().is_unspecified() {
+        "localhost".to_string()
+    } else {
+        local_addr.ip().to_string()
+    };
+    tracing::info!("Listening on http://{}:{}", display_host, local_addr.port());
+
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),

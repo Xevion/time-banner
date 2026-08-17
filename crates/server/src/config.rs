@@ -48,24 +48,8 @@ impl Configuration {
     /// - Development: 127.0.0.1 (localhost only)
     pub fn socket_addr(&self) -> [u8; 4] {
         match self.env {
-            Environment::Production => {
-                let socket = [0, 0, 0, 0];
-                tracing::info!(
-                    "Starting Production on {:?}:{}",
-                    socket.as_slice(),
-                    self.port
-                );
-                socket
-            }
-            Environment::Development => {
-                let socket = [127, 0, 0, 1];
-                tracing::info!(
-                    "Starting Development on {:?}:{}",
-                    socket.as_slice(),
-                    self.port
-                );
-                socket
-            }
+            Environment::Production => [0, 0, 0, 0],
+            Environment::Development => [127, 0, 0, 1],
         }
     }
 
