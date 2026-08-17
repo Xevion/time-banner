@@ -1,3 +1,8 @@
 /target
 .idea
 .env
+*.env.local
+*.log
+.DS_Store
+.vscode/
+.bacon-locations
