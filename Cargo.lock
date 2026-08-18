@@ -3080,6 +3080,7 @@ name = "xtask"
 version = "0.2.0"
 dependencies = [
  "assert2",
+ "flate2",
  "ipnetwork",
  "maxminddb",
  "serde",

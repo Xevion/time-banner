@@ -14,6 +14,7 @@ path = "src/main.rs"
 
 [dependencies]
 assert2.workspace = true
+flate2 = "1"
 ipnetwork = "0.21.1"
 maxminddb = "0.30.0"
 serde = { version = "1.0.229", features = ["derive"] }

@@ -27,6 +27,12 @@ RUN mkdir -p crates/core/src crates/render/src crates/render/benches crates/serv
 # build.rs requires them present, even for the stub-source layer below.
 RUN cargo run --release -p xtask -- fonts
 
+# Fetch and convert this month's DB-IP City Lite snapshot into geoip.bin,
+# which the server memory-maps at runtime (not compiled in). Independent of
+# app source, so it caches alongside the fonts fetch above.
+ARG DBIP_MONTH=2026-08
+RUN cargo run --release -p xtask -- geoip --month ${DBIP_MONTH}
+
 # Build with stub sources to produce a stable, dependency-only image layer
 RUN cargo build --release --workspace
 
@@ -58,9 +64,10 @@ RUN addgroup -g $GID -S $APP_USER \
     && adduser -u $UID -D -S -G $APP_USER $APP_USER \
     && mkdir -p ${APP}
 
-# Copy the binary. Templates and fonts are compiled into it, so nothing else
-# needs to ship alongside it.
+# Copy the binary. Templates and fonts are compiled into it; geoip.bin is
+# memory-mapped at runtime instead, so it ships alongside as a plain file.
 COPY --from=builder --chown=$APP_USER:$APP_USER /usr/src/time-banner/target/release/time-banner ${APP}/time-banner
+COPY --from=builder --chown=$APP_USER:$APP_USER /usr/src/time-banner/crates/core/geoip/geoip.bin ${APP}/geoip.bin
 
 # Set proper permissions
 RUN chmod +x ${APP}/time-banner
@@ -71,6 +78,7 @@ WORKDIR ${APP}
 # Use ARG for build-time configuration, ENV for runtime
 ARG PORT=3000
 ENV PORT=${PORT}
+ENV GEOIP_DB_PATH=${APP}/geoip.bin
 EXPOSE ${PORT}
 
 # Add health check (using wget since curl isn't in Alpine by default)

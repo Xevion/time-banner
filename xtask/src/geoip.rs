@@ -9,8 +9,10 @@
 
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::Read as _;
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use assert2::assert;
 use maxminddb::{Reader, WithinOptions};
@@ -20,6 +22,15 @@ const MAGIC: &[u8; 8] = b"TBGEOIP\0";
 const FORMAT_VERSION: u32 = 1;
 const OUTPUT_RELATIVE_PATH: &str = "crates/core/geoip/geoip.bin";
 const UNKNOWN_LABEL: u8 = 0;
+
+const DBIP_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
+     (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
+const DBIP_REFERER: &str = "https://db-ip.com/db/download/ip-to-city-lite";
+
+const FETCH_MAX_ATTEMPTS: u32 = 4;
+const FETCH_BODY_LIMIT: u64 = 200 * 1024 * 1024;
+// Snapshots publish early each month; fall back to earlier ones on 404.
+const FETCH_FALLBACK_MONTHS: u32 = 2;
 
 #[derive(Deserialize)]
 struct Location {
@@ -40,27 +51,130 @@ struct ResolvedRange {
     tz: String,
 }
 
-/// Resolves the source `.mmdb` path: `--input <path>` wins, falling back to
-/// `DBIP_MMDB_PATH`. Exits with a clear message if neither is set, mirroring
-/// the font fetcher's fail-loud style.
-fn resolve_input_path(args: &[String]) -> PathBuf {
+enum Source {
+    LocalFile(PathBuf),
+    Fetch(String),
+}
+
+fn resolve_source(args: &[String]) -> Source {
     if let Some(pos) = args.iter().position(|a| a == "--input") {
         return match args.get(pos + 1) {
-            Some(path) => PathBuf::from(path),
+            Some(path) => Source::LocalFile(PathBuf::from(path)),
             None => {
                 eprintln!("--input requires a path argument");
                 std::process::exit(1);
             }
         };
     }
+    if let Some(pos) = args.iter().position(|a| a == "--month") {
+        return match args.get(pos + 1) {
+            Some(month) => Source::Fetch(month.clone()),
+            None => {
+                eprintln!("--month requires a YYYY-MM argument");
+                std::process::exit(1);
+            }
+        };
+    }
+    if let Ok(path) = std::env::var("DBIP_MMDB_PATH") {
+        return Source::LocalFile(PathBuf::from(path));
+    }
+    if let Ok(month) = std::env::var("DBIP_MONTH") {
+        return Source::Fetch(month);
+    }
 
-    match std::env::var("DBIP_MMDB_PATH") {
-        Ok(path) => PathBuf::from(path),
-        Err(_) => {
-            eprintln!("no source database given: pass --input <path> or set DBIP_MMDB_PATH");
-            std::process::exit(1);
+    eprintln!(
+        "no source given: pass --input <path>, --month <YYYY-MM>, or set DBIP_MMDB_PATH / DBIP_MONTH"
+    );
+    std::process::exit(1);
+}
+
+fn load_mmdb_bytes(source: Source) -> Vec<u8> {
+    match source {
+        Source::LocalFile(path) => {
+            println!("reading {}", path.display());
+            fs::read(&path).unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()))
+        }
+        Source::Fetch(month) => gunzip(&fetch_mmdb_gz(&month)),
+    }
+}
+
+fn dbip_url(month: &str) -> String {
+    format!("https://download.db-ip.com/free/dbip-city-lite-{month}.mmdb.gz")
+}
+
+fn previous_month(month: &str) -> String {
+    let (year, mon) = month
+        .split_once('-')
+        .and_then(|(y, m)| Some((y.parse::<u32>().ok()?, m.parse::<u32>().ok()?)))
+        .unwrap_or_else(|| panic!("malformed month {month:?}, expected YYYY-MM"));
+    let (year, mon) = if mon <= 1 {
+        (year - 1, 12)
+    } else {
+        (year, mon - 1)
+    };
+    format!("{year:04}-{mon:02}")
+}
+
+fn fetch_month(month: &str) -> Option<Vec<u8>> {
+    let url = dbip_url(month);
+    for attempt in 1..=FETCH_MAX_ATTEMPTS {
+        let outcome = ureq::get(&url)
+            .header("User-Agent", DBIP_USER_AGENT)
+            .header("Referer", DBIP_REFERER)
+            .header(
+                "Accept",
+                "application/gzip, application/octet-stream;q=0.9, */*;q=0.8",
+            )
+            .header("Accept-Language", "en-US,en;q=0.9")
+            .call();
+
+        match outcome {
+            Ok(mut response) => {
+                return Some(
+                    response
+                        .body_mut()
+                        .with_config()
+                        .limit(FETCH_BODY_LIMIT)
+                        .read_to_vec()
+                        .unwrap_or_else(|e| {
+                            panic!("failed to read response body for {month}: {e}")
+                        }),
+                );
+            }
+            Err(ureq::Error::StatusCode(404)) => return None,
+            Err(e) if attempt < FETCH_MAX_ATTEMPTS => {
+                let backoff = Duration::from_secs(attempt as u64);
+                println!(
+                    "{month} attempt {attempt}/{FETCH_MAX_ATTEMPTS} failed ({e}), retrying in {backoff:?}"
+                );
+                std::thread::sleep(backoff);
+            }
+            Err(e) => panic!("failed to fetch {url} after {FETCH_MAX_ATTEMPTS} attempts: {e}"),
         }
     }
+    unreachable!()
+}
+
+fn fetch_mmdb_gz(month: &str) -> Vec<u8> {
+    let mut candidate = month.to_string();
+    for _ in 0..=FETCH_FALLBACK_MONTHS {
+        println!("fetching DB-IP City Lite for {candidate}");
+        if let Some(bytes) = fetch_month(&candidate) {
+            return bytes;
+        }
+        candidate = previous_month(&candidate);
+    }
+    panic!(
+        "no DB-IP City Lite snapshot found for {month} or the {FETCH_FALLBACK_MONTHS} month(s) before it"
+    );
+}
+
+fn gunzip(bytes: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    flate2::read::GzDecoder::new(bytes)
+        .read_to_end(&mut out)
+        .unwrap_or_else(|e| panic!("failed to decompress downloaded archive: {e}"));
+    out
 }
 
 fn output_path() -> PathBuf {
@@ -242,10 +356,8 @@ fn encode(v4: &[(u128, u8)], v6: &[(u128, u8)], labels: &[String]) -> Vec<u8> {
 }
 
 pub fn convert(args: &[String]) {
-    let input = resolve_input_path(args);
-    println!("reading {}", input.display());
-    let reader = Reader::open_readfile(&input)
-        .unwrap_or_else(|e| panic!("failed to open {}: {e}", input.display()));
+    let bytes = load_mmdb_bytes(resolve_source(args));
+    let reader = Reader::from_source(bytes).unwrap_or_else(|e| panic!("failed to parse mmdb: {e}"));
 
     let finder = utz::Finder::new().expect("failed to load bundled timezone boundary data");
 
@@ -339,5 +451,22 @@ mod tests {
         // two separate same-label ranges, not one merged range.
         let out = merge_ranges(&[(0, 9, 1), (20, 29, 1)], 29);
         check!(out == vec![(0, 1), (10, UNKNOWN_LABEL), (20, 1)]);
+    }
+
+    #[test]
+    fn previous_month_steps_back_within_a_year() {
+        check!(previous_month("2026-08") == "2026-07");
+    }
+
+    #[test]
+    fn previous_month_rolls_back_across_a_year_boundary() {
+        check!(previous_month("2026-01") == "2025-12");
+    }
+
+    #[test]
+    fn dbip_url_embeds_the_month() {
+        check!(
+            dbip_url("2026-08") == "https://download.db-ip.com/free/dbip-city-lite-2026-08.mmdb.gz"
+        );
     }
 }

@@ -12,3 +12,4 @@ target/
 # Fetched inside the build (see Dockerfile); excluding it here keeps the
 # later full-source COPY from clobbering what the earlier xtask run wrote.
 crates/render/fonts/*.ttf
+crates/core/geoip/geoip.bin
