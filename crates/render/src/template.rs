@@ -181,6 +181,9 @@ struct Example {
 pub fn render_index_page(now: Timestamp) -> Result<String, tera::Error> {
     let epoch = now.as_second();
 
+    // busts Chrome's URL-keyed favicon cache, which ignores `Cache-Control`
+    let favicon_href = format!("/favicon.ico?v={epoch}");
+
     let examples = vec![
         Example {
             label: "Absolute time",
@@ -210,6 +213,7 @@ pub fn render_index_page(now: Timestamp) -> Result<String, tera::Error> {
 
     let mut context = Context::new();
     context.insert("examples", &examples);
+    context.insert("favicon_href", &favicon_href);
     TEMPLATES.render("index.html", &context)
 }
 
@@ -225,6 +229,13 @@ mod tests {
         let html = render_index_page(Timestamp::now()).expect("index page should render");
         assert!(html.contains("time-banner"));
         assert!(html.contains("/favicon.ico"));
+    }
+
+    #[test]
+    fn favicon_link_carries_a_cache_busting_query_param() {
+        let html = render_index_page(Timestamp::from_second(1_700_000_000).unwrap())
+            .expect("index page should render");
+        assert!(html.contains("href=\"/favicon.ico?v=1700000000\""));
     }
 
     /// A context in UTC, for tests where the zone is not what's under test.

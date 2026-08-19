@@ -35,10 +35,8 @@ async fn main() {
             .init();
     }
 
-    let geoip = config
-        .geoip_db_path
-        .as_deref()
-        .and_then(|path| match GeoipDb::open(path) {
+    let geoip = match config.geoip_db_path.as_deref() {
+        Some(path) => match GeoipDb::open(path) {
             Ok(db) => {
                 tracing::info!(path = %path.display(), "loaded geoip database");
                 Some(Arc::new(db))
@@ -51,7 +49,14 @@ async fn main() {
                 );
                 None
             }
-        });
+        },
+        None => {
+            tracing::warn!(
+                "GEOIP_DB_PATH not set: ?tz=auto, the favicon, and the index page will fall back to UTC"
+            );
+            None
+        }
+    };
 
     let app = build_router(geoip);
 

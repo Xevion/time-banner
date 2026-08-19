@@ -223,7 +223,9 @@ Resolution order, first match wins:
 1. `?tz=`
 2. `Timezone` request header
 3. `?tz=auto` or `Timezone: auto`, resolved by IP geolocation
-4. `UTC`
+4. `UTC`, except on `/`, `/favicon.ico`, and `/favicon.png`, which default to
+   step 3 instead: nothing there is shared across viewers the way an
+   `/absolute` badge is, so geolocating by default costs nothing
 
 Accepted forms:
 
@@ -282,6 +284,11 @@ Geolocation is best-effort. A miss falls through to `UTC` rather than erroring.
 
 Responses that consumed the client address carry `Cache-Control: private` and
 are never shared between clients.
+
+`/`, `/favicon.ico`, and `/favicon.png` default `tz` to `auto` (section 6) on
+the assumption that these routes are fetched directly by the visitor's own
+browser, never through a shared caching proxy the way an embedded badge is.
+See section 19 for the open question this assumption rests on.
 
 ## 7. Localization
 
@@ -363,6 +370,7 @@ wrong rather than at an arbitrary interval.
 | `progress`                         | `public, max-age=` until the rendered percentage changes |
 | `timer`                            | `public, max-age=` until the next occurrence changes     |
 | `uptime`                           | `no-store`                                               |
+| favicon (`/favicon.ico`, `.png`)   | `no-store`                                               |
 | any, animated                      | section 10                                               |
 | any, geolocated                    | `private` prefix                                         |
 
@@ -478,6 +486,14 @@ README for hours.
 
 Every error carries a stable machine-readable code alongside its human message,
 so callers can branch without matching on prose.
+
+Not every header degrades gracefully on a bad value. `Accept`,
+`Accept-Language`, and conditional headers are preferences a client doesn't
+always choose deliberately (often browser-populated), and per their own RFCs
+they are ignored or fall back rather than rejected. `Timezone` and `Date-Now`
+are not content-negotiation preferences: they carry the same grammar and the
+same required-input status as their `?query=` equivalent, and a malformed
+value in either is `400`, never a silent default.
 
 ## 12. Bounds
 
@@ -735,3 +751,8 @@ deadline before exiting.
 - Whether the geolocation database and the font bundle should share one asset
   format and one refresh mechanism rather than two.
 - What `timer` should render when a recurrence has no next occurrence.
+- Whether the service should identify known caching/image proxies (e.g.
+  GitHub's Camo) by User-Agent or source address and adjust geolocation and
+  caching behavior accordingly, rather than relying on the route-based
+  heuristic in section 6.2 (which assumes `/`, `/favicon.ico`, and
+  `/favicon.png` are always requested directly, never proxied).

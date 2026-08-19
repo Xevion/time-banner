@@ -335,3 +335,19 @@ async fn favicon_renders_ico_for_a_known_client_ip(router: Router) {
     check!(response.status() == StatusCode::OK);
     check!(content_type(&response) == "image/x-icon");
 }
+
+#[rstest]
+#[case::ico("/favicon.ico")]
+#[case::png("/favicon.png")]
+#[tokio::test]
+async fn favicon_responses_are_never_cached(router: Router, #[case] uri: &str) {
+    let response = get_as_client(router, uri).await;
+    check!(header_value(&response, "cache-control").contains("no-store"));
+}
+
+#[rstest]
+#[tokio::test]
+async fn favicon_and_index_default_to_geolocated_privacy(router: Router) {
+    let response = get_as_client(router, "/favicon.ico").await;
+    check!(header_value(&response, "cache-control").contains("private"));
+}

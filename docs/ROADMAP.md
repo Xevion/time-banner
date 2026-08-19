@@ -29,6 +29,9 @@ It adds no user-visible features.
       rounding
 - [x] Inject the clock rather than reading it inside the renderer
 - [x] Typed error enum with stable codes and a single status mapping
+      (the per-variant code exists on `core::ParseError` but isn't surfaced
+      in the JSON body yet - every parse failure reports the same generic
+      "ParseError", not e.g. "unknown_timezone"; tracked as a phase 7 item)
 - [x] Move rasterization and encoding off the async executor
 - [x] Build the font database once, not per request
 - [x] Compile templates in; drop the dev-versus-production path fork
@@ -58,13 +61,12 @@ exists.
 - [x] `?format=` for absolute output, with bounded expansion
 - [x] `Accept-Language` negotiation and `?locale=`
 - [x] `Content-Language` and `Vary: Accept-Language`
-- [ ] Bundled geolocation database for `tz=auto`, with `private` caching
-      (`tz=auto` parses and falls through to UTC, as a geolocation miss does;
-      the approach decided is a lightweight country-level fallback over a
-      license-free dataset such as DB-IP Lite, not a full city-level
-      MaxMind-style database, since embedded README images are proxied
-      through GitHub's Camo and never see the actual viewer's address)
+- [x] Bundled geolocation database for `tz=auto`, with `private` caching
+      (DB-IP City Lite, converted to a `geoip.bin` table by `xtask geoip`; a
+      miss still falls through to UTC)
 - [x] Favicon consumes resolved timezone rather than always UTC
+- [x] `/`, `/favicon.ico`, and `/favicon.png` default `tz` to `auto` rather
+      than `UTC`, since nothing there is a shared badge
 
 ## Phase 4: fonts
 
@@ -115,6 +117,9 @@ Blocks styling, because text measurement is wrong until faces are real.
 - [ ] WebP, AVIF, JPEG encoders
 - [ ] `.txt` and `.json` representations
 - [ ] Negotiated error rendering: image, `problem+json`, or plain text
+- [ ] Surface `ParseError::code()` (and equivalents) as the JSON error
+      body's `error` field instead of the outer `TimeBannerError` variant
+      name
 
 ## Phase 8: animation
 

@@ -37,10 +37,16 @@ pub struct Resolution {
     /// Negotiated language code, always one `time_banner_render::locale`
     /// actually has words for.
     pub locale: String,
-    /// Whether `tz` was resolved via IP geolocation (`?tz=auto` or
-    /// `Timezone: auto`). Responses that consumed the client address this
-    /// way carry `Cache-Control: private`, per SPEC.md section 6.2.
+    /// Whether `tz` was resolved via IP geolocation. Responses that consumed
+    /// the client address this way carry `Cache-Control: private`, per
+    /// SPEC.md section 6.2.
     pub used_geolocation: bool,
+}
+
+/// Routes with no shared-cache audience, so `tz` defaults to `auto` here
+/// instead of `UTC`.
+fn defaults_to_auto_tz(path: &str) -> bool {
+    matches!(path, "/" | "/favicon.ico" | "/favicon.png")
 }
 
 impl Resolution {
@@ -83,6 +89,7 @@ impl Resolution {
                 (geo_tz.unwrap_or(TimeZone::UTC), true)
             }
             Some(spec) => (resolve_timezone(spec)?, false),
+            None if defaults_to_auto_tz(uri.path()) => (geo_tz.unwrap_or(TimeZone::UTC), true),
             None => (TimeZone::UTC, false),
         };
 
@@ -139,12 +146,18 @@ pub async fn resolve_request(
         .headers_mut()
         .append(header::VARY, HeaderValue::from_static("Timezone"));
 
-    // The client address only actually informed this response when `auto`
-    // was resolved against it; an explicit `?tz=` never touches it.
+    // Appended, not `insert`ed, so a handler's own `Cache-Control` survives.
     if used_geolocation {
-        response
-            .headers_mut()
-            .insert(header::CACHE_CONTROL, HeaderValue::from_static("private"));
+        let value = match response.headers().get(header::CACHE_CONTROL) {
+            Some(existing) => {
+                let combined = format!("{}, private", existing.to_str().unwrap_or_default());
+                HeaderValue::from_str(&combined).ok()
+            }
+            None => Some(HeaderValue::from_static("private")),
+        };
+        if let Some(value) = value {
+            response.headers_mut().insert(header::CACHE_CONTROL, value);
+        }
     }
 
     Ok(response)
@@ -168,6 +181,7 @@ impl<S: Send + Sync> FromRequestParts<S> for Resolution {
 mod tests {
     use assert2::check;
     use axum::http::Request;
+    use rstest::rstest;
 
     use super::*;
 
@@ -306,6 +320,42 @@ mod tests {
         let request = Request::builder().uri("/relative/0").body(()).unwrap();
         let resolution =
             resolve_request_parts_with_geo(request, Some(TimeZone::get("Europe/Paris").unwrap()))
+                .unwrap();
+        check!(resolution.timezone_label() == "UTC");
+        check!(!resolution.used_geolocation);
+    }
+
+    #[rstest]
+    #[case::favicon_ico("/favicon.ico")]
+    #[case::favicon_png("/favicon.png")]
+    #[case::index("/")]
+    fn favicon_and_index_default_to_the_geolocated_timezone(#[case] path: &str) {
+        let request = Request::builder().uri(path).body(()).unwrap();
+        let resolution =
+            resolve_request_parts_with_geo(request, Some(TimeZone::get("Asia/Tokyo").unwrap()))
+                .unwrap();
+        check!(resolution.timezone_label() == "Asia/Tokyo");
+        check!(resolution.used_geolocation);
+    }
+
+    #[test]
+    fn an_explicit_tz_still_overrides_the_favicon_auto_default() {
+        let request = Request::builder()
+            .uri("/favicon.ico?tz=America/Chicago")
+            .body(())
+            .unwrap();
+        let resolution =
+            resolve_request_parts_with_geo(request, Some(TimeZone::get("Asia/Tokyo").unwrap()))
+                .unwrap();
+        check!(resolution.timezone_label() == "America/Chicago");
+        check!(!resolution.used_geolocation);
+    }
+
+    #[test]
+    fn other_routes_keep_the_utc_default_even_with_geolocation_available() {
+        let request = Request::builder().uri("/relative/0").body(()).unwrap();
+        let resolution =
+            resolve_request_parts_with_geo(request, Some(TimeZone::get("Asia/Tokyo").unwrap()))
                 .unwrap();
         check!(resolution.timezone_label() == "UTC");
         check!(!resolution.used_geolocation);

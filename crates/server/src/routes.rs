@@ -121,7 +121,10 @@ pub async fn favicon_handler(
 
     Ok((
         StatusCode::OK,
-        [(header::CONTENT_TYPE, "image/x-icon")],
+        [
+            (header::CONTENT_TYPE, "image/x-icon"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
         ico_bytes,
     ))
 }
@@ -137,7 +140,10 @@ pub async fn favicon_png_handler(
 
     Ok((
         StatusCode::OK,
-        [(header::CONTENT_TYPE, "image/png")],
+        [
+            (header::CONTENT_TYPE, "image/png"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
         png_bytes,
     ))
 }
