@@ -127,7 +127,7 @@ pub async fn resolve_request(
         .extensions()
         .get::<ConnectInfo<SocketAddr>>()
         .map(|ConnectInfo(addr)| *addr);
-    let client_ip = client_ip::resolve(request.headers(), connect_info);
+    let client_ip = client_ip::resolve(request.headers(), connect_info, client_ip::TRUST);
     let geo_tz = client_ip
         .and_then(|ip| geoip.as_deref().and_then(|db| db.lookup(ip)))
         .and_then(|name| TimeZone::get(name).ok());

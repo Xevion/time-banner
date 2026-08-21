@@ -29,13 +29,13 @@ async fn get(router: Router, uri: &str) -> axum::http::Response<Body> {
 }
 
 /// The favicon routes need a client address, which only a proxy header or a
-/// real socket supplies.
+/// real socket supplies. `X-Forwarded-For` since that's the trusted source.
 async fn get_as_client(router: Router, uri: &str) -> axum::http::Response<Body> {
     router
         .oneshot(
             Request::builder()
                 .uri(uri)
-                .header("CF-Connecting-IP", "127.0.0.1")
+                .header("X-Forwarded-For", "127.0.0.1")
                 .body(Body::empty())
                 .expect("valid request"),
         )
@@ -325,7 +325,7 @@ async fn favicon_renders_ico_for_a_known_client_ip(router: Router) {
         .oneshot(
             Request::builder()
                 .uri("/favicon.ico")
-                .header("CF-Connecting-IP", "127.0.0.1")
+                .header("X-Forwarded-For", "127.0.0.1")
                 .body(Body::empty())
                 .expect("valid request"),
         )
