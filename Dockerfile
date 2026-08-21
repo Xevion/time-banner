@@ -1,49 +1,59 @@
-# Build Stage
-FROM rust:alpine AS builder
+# syntax=docker/dockerfile:1.24
 
-# Install build dependencies
-RUN apk add --no-cache \
-    musl-dev \
-    pkgconfig \
-    openssl-dev
+ARG RUST_VERSION=1.95
 
-WORKDIR /usr/src/time-banner
+# Stage 1: cargo-chef base, shared by the planner and builder stages below so
+# the apk/cargo-chef install layer is cached identically for both.
+FROM rust:${RUST_VERSION}-alpine AS chef
+WORKDIR /build
 
-# Copy manifests and the core crate's build script (needs its data file) for
-# a dependency-only layer, cached separately from the application code.
-COPY ./Cargo.toml ./Cargo.lock* ./
-COPY ./crates/core/Cargo.toml ./crates/core/build.rs ./crates/core/
-COPY ./crates/core/src/abbr_tz ./crates/core/src/abbr_tz
-COPY ./crates/render/Cargo.toml ./crates/render/build.rs ./crates/render/
-COPY ./crates/server/Cargo.toml ./crates/server/
-COPY ./xtask ./xtask
-RUN mkdir -p crates/core/src crates/render/src crates/render/benches crates/server/src \
-    && echo "fn main() {}" > crates/core/src/lib.rs \
-    && echo "" > crates/render/src/lib.rs \
-    && echo "fn main() {}" > crates/render/benches/render.rs \
-    && echo "fn main() {}" > crates/server/src/main.rs
+RUN apk add --no-cache musl-dev pkgconfig openssl-dev && \
+    cargo install cargo-chef --locked
 
-# Fetch the bundled fonts before anything compiles the render crate: its
-# build.rs requires them present, even for the stub-source layer below.
-RUN cargo run --release -p xtask -- fonts
+# Stage 2: recipe planner. `cargo chef prepare` shells out to `cargo metadata`,
+# which needs every declared target's entrypoint to actually exist, so the
+# real source is copied here too; only the resulting recipe.json is content-
+# addressed into the builder stage below, so unrelated source edits don't
+# invalidate the dependency-cook cache.
+FROM chef AS planner
 
-# Fetch and convert this month's DB-IP City Lite snapshot into geoip.bin,
-# which the server memory-maps at runtime (not compiled in). Independent of
-# app source, so it caches alongside the fonts fetch above.
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+# Stage 3: builder
+FROM chef AS builder
+
+# Cache mount ids must carry a literal `s/<service-id>-` prefix for Railway to
+# persist them across builds; `${RAILWAY_SERVICE_ID}` is rejected because that
+# validation runs before build-arg expansion. This is the `time-banner` service.
+COPY --from=planner /build/recipe.json recipe.json
+RUN --mount=type=cache,id=s/39522ec9-0888-4986-96cc-91cfa828d5a1-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=s/39522ec9-0888-4986-96cc-91cfa828d5a1-cargo-git,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,id=s/39522ec9-0888-4986-96cc-91cfa828d5a1-cargo-target,target=/build/target,sharing=locked \
+    cargo chef cook --release --recipe-path recipe.json --workspace
+
+# `cook` builds dummy stand-ins for every workspace crate (including a no-op
+# build.rs), so the real source replaces them here without disturbing the
+# cached dependency layer above.
+COPY . .
+
+# xtask itself only became real source in the COPY above, so it must build
+# here; render's build.rs then needs the fonts it fetches to be on disk.
 ARG DBIP_MONTH=2026-08
-RUN cargo run --release -p xtask -- geoip --month ${DBIP_MONTH}
+RUN --mount=type=cache,id=s/39522ec9-0888-4986-96cc-91cfa828d5a1-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=s/39522ec9-0888-4986-96cc-91cfa828d5a1-cargo-git,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,id=s/39522ec9-0888-4986-96cc-91cfa828d5a1-cargo-target,target=/build/target,sharing=locked \
+    cargo run --release -p xtask -- fonts && \
+    cargo run --release -p xtask -- geoip --month ${DBIP_MONTH}
 
-# Build with stub sources to produce a stable, dependency-only image layer
-RUN cargo build --release --workspace
-
-# Build with the real application code
-RUN rm crates/core/src/lib.rs crates/render/src/lib.rs crates/server/src/main.rs
-COPY ./crates ./crates
-RUN rm target/release/deps/time_banner* target/release/deps/libtime_banner*
-RUN cargo build --release --workspace
-
-# Strip the binary to reduce size
-RUN strip target/release/time-banner
+# target/ is a cache mount and won't land in the image layer, so the binary is
+# copied out before the mount is released.
+RUN --mount=type=cache,id=s/39522ec9-0888-4986-96cc-91cfa828d5a1-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=s/39522ec9-0888-4986-96cc-91cfa828d5a1-cargo-git,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,id=s/39522ec9-0888-4986-96cc-91cfa828d5a1-cargo-target,target=/build/target,sharing=locked \
+    cargo build --release --workspace && \
+    cp target/release/time-banner /build/time-banner && \
+    strip /build/time-banner
 
 # Runtime Stage - Alpine for smaller size and musl compatibility
 FROM alpine:3.19
@@ -66,8 +76,8 @@ RUN addgroup -g $GID -S $APP_USER \
 
 # Copy the binary. Templates and fonts are compiled into it; geoip.bin is
 # memory-mapped at runtime instead, so it ships alongside as a plain file.
-COPY --from=builder --chown=$APP_USER:$APP_USER /usr/src/time-banner/target/release/time-banner ${APP}/time-banner
-COPY --from=builder --chown=$APP_USER:$APP_USER /usr/src/time-banner/crates/core/geoip/geoip.bin ${APP}/geoip.bin
+COPY --from=builder --chown=$APP_USER:$APP_USER /build/time-banner ${APP}/time-banner
+COPY --from=builder --chown=$APP_USER:$APP_USER /build/crates/core/geoip/geoip.bin ${APP}/geoip.bin
 
 # Set proper permissions
 RUN chmod +x ${APP}/time-banner
