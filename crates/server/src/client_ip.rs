@@ -1,7 +1,9 @@
 //! Client IP extraction from trusted proxy headers.
 //!
-//! Priority: `CF-Connecting-IP` (Cloudflare) -> rightmost `X-Forwarded-For`
-//! (Railway) -> socket peer address, gated per-source by [`TRUST`].
+//! Priority: `CF-Connecting-IP` (Cloudflare) -> `X-Real-IP` (Railway) ->
+//! socket peer address, gated per-source by [`TRUST`]. Not `X-Forwarded-For`:
+//! Railway appends its own relay hop as the rightmost entry, so that header
+//! doesn't identify the client.
 
 use crate::error::TimeBannerError;
 use crate::utils::HeaderMapExt;
@@ -46,11 +48,8 @@ pub fn resolve(
     }
 
     if trust.railway
-        && let Some(xff) = headers.get_str("x-forwarded-for")
-        && let Some(ip) = xff
-            .rsplit(',')
-            .next()
-            .map(str::trim)
+        && let Some(ip) = headers
+            .get_str("x-real-ip")
             .and_then(|s| s.parse::<IpAddr>().ok())
     {
         return Some(ip);
@@ -107,10 +106,7 @@ mod tests {
 
     #[test]
     fn falls_back_to_the_socket_peer_when_no_header_is_trusted() {
-        let h = headers(&[
-            ("cf-connecting-ip", "1.1.1.1"),
-            ("x-forwarded-for", "2.2.2.2"),
-        ]);
+        let h = headers(&[("cf-connecting-ip", "1.1.1.1"), ("x-real-ip", "2.2.2.2")]);
         check!(resolve(&h, Some(socket("9.9.9.9")), NONE) == Some("9.9.9.9".parse().unwrap()));
     }
 
@@ -126,33 +122,21 @@ mod tests {
     }
 
     #[test]
-    fn x_forwarded_for_is_used_only_when_railway_is_trusted() {
-        let h = headers(&[("x-forwarded-for", "2.2.2.2")]);
+    fn x_real_ip_is_used_only_when_railway_is_trusted() {
+        let h = headers(&[("x-real-ip", "2.2.2.2")]);
         check!(resolve(&h, None, NONE) == None);
         check!(resolve(&h, None, TRUST) == Some("2.2.2.2".parse().unwrap()));
     }
 
     #[test]
-    fn x_forwarded_for_uses_the_rightmost_entry() {
-        let h = headers(&[("x-forwarded-for", "1.1.1.1, 2.2.2.2, 3.3.3.3")]);
-        check!(resolve(&h, None, TRUST) == Some("3.3.3.3".parse().unwrap()));
-    }
-
-    #[test]
-    fn cloudflare_takes_priority_over_x_forwarded_for_when_both_are_trusted() {
-        let h = headers(&[
-            ("cf-connecting-ip", "1.1.1.1"),
-            ("x-forwarded-for", "2.2.2.2"),
-        ]);
+    fn cloudflare_takes_priority_over_x_real_ip_when_both_are_trusted() {
+        let h = headers(&[("cf-connecting-ip", "1.1.1.1"), ("x-real-ip", "2.2.2.2")]);
         check!(resolve(&h, None, BOTH) == Some("1.1.1.1".parse().unwrap()));
     }
 
     #[test]
     fn an_untrusted_cloudflare_header_does_not_block_the_railway_fallback() {
-        let h = headers(&[
-            ("cf-connecting-ip", "1.1.1.1"),
-            ("x-forwarded-for", "2.2.2.2"),
-        ]);
+        let h = headers(&[("cf-connecting-ip", "1.1.1.1"), ("x-real-ip", "2.2.2.2")]);
         let railway_only = ProxyTrust {
             cloudflare: false,
             railway: true,
