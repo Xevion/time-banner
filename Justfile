@@ -28,9 +28,13 @@ lint: fonts
 test: fonts
     cargo nextest run
 
-# Fetch bundled fonts (cached; skips files whose checksum already matches)
+# Build the subsetted face bundle render embeds (fetches upstream faces first)
 fonts:
     cargo run -p xtask -- fonts
+
+# Rebuild the bundle and fail if the committed manifest no longer describes it
+fonts-verify:
+    cargo run -p xtask -- fonts --verify
 
 # Convert a DB-IP City Lite .mmdb into crates/core/geoip/geoip.bin.
 # Source: `--input <path>` / DBIP_MMDB_PATH, or `--month <YYYY-MM>` / DBIP_MONTH

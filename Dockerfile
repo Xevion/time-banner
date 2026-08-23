@@ -38,7 +38,7 @@ RUN --mount=type=cache,id=s/39522ec9-0888-4986-96cc-91cfa828d5a1-cargo-registry,
 COPY . .
 
 # xtask itself only became real source in the COPY above, so it must build
-# here; render's build.rs then needs the fonts it fetches to be on disk.
+# here; render's build.rs then needs the subsetted face bundle on disk.
 ARG DBIP_MONTH=2026-08
 RUN --mount=type=cache,id=s/39522ec9-0888-4986-96cc-91cfa828d5a1-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=s/39522ec9-0888-4986-96cc-91cfa828d5a1-cargo-git,target=/usr/local/cargo/git,sharing=locked \

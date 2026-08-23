@@ -26,9 +26,9 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: crates/render/fonts/*.ttf
-          key: fonts-${{ hashFiles('xtask/src/main.rs') }}
-      - name: Fetch fonts
-        run: cargo run -p xtask -- fonts
+          key: fonts-${{ hashFiles('xtask/src/fonts.rs') }}
+      - name: Build the face bundle, and check the manifest still describes it
+        run: cargo run -p xtask -- fonts --verify
       - uses: taiki-e/install-action@cargo-machete
       - name: Check formatting
         run: |
@@ -55,8 +55,8 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: crates/render/fonts/*.ttf
-          key: fonts-${{ hashFiles('xtask/src/main.rs') }}
-      - name: Fetch fonts
+          key: fonts-${{ hashFiles('xtask/src/fonts.rs') }}
+      - name: Build the face bundle
         run: cargo run -p xtask -- fonts
       - uses: taiki-e/install-action@cargo-nextest
       - name: Run tests

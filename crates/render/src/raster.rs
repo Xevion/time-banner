@@ -166,7 +166,7 @@ mod tests {
     /// a corrupted or truncated fetch should fail loudly here, not at
     /// first render in production.
     #[rstest]
-    fn bundled_font_files_parse(#[files("fonts/*.ttf")] path: PathBuf) {
+    fn bundled_font_files_parse(#[files("fonts/bundle/*.ttf")] path: PathBuf) {
         let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
         let mut db = fontdb::Database::new();
         db.load_font_data(bytes);

@@ -645,45 +645,91 @@ service delegates to the renderer's shaper.
 
 ### 15.1 Bundle
 
-Faces are subsetted per script by HarfBuzz's subsetter, invoked from an `xtask`.
-Each family produces one artifact per (weight, script) pair, alongside a
-manifest describing coverage.
+Faces are subsetted by `skera`, the fontations subsetter, invoked from an
+`xtask`. It is pure Rust, so no C++ toolchain enters the build; the tradeoff is
+that it cannot yet instance a variable font, which section 15.6 covers.
 
-Generation is an explicit build step, not a `build.rs` step. Subsetting a font
-library is too slow and too native-toolchain-dependent to sit in the compile
-graph of a service that gets type-checked constantly.
+Each family produces one static artifact, not one per (weight, script) pair.
+The service draws a single weight, so the variation tables are dropped and each
+face is left at its default axis position, which is that weight. Coverage is
+one set rather than one per script: `format` passes arbitrary literal text
+through to the canvas, so a per-script split would only decide which users get
+missing-glyph boxes. The bundled set is Latin, Greek and Cyrillic, plus
+punctuation, currency and arrows.
 
-The resulting bundle is not committed. `just assets` produces it, CI produces
-it, and CI verifies that regenerating from unchanged sources produces an
-unchanged bundle.
+Generation is an explicit build step, not a `build.rs` step. Subsetting is too
+slow and too network-dependent to sit in the compile graph of a service that
+gets type-checked constantly.
+
+The faces are not committed. `just fonts` produces them and CI produces them,
+the same way the upstream faces and `geoip.bin` are produced. The manifest
+beside them is committed, because it is the description CI checks against: it
+records coverage, license and a SHA-256 for each face, so `just fonts-verify`
+can rebuild the bundle and fail if what it would write no longer matches. That
+is what catches a moved upstream pin, a widened coverage set, or a subsetter
+that started emitting different bytes.
+
+Subsetting is checked as well as pinned. The pipeline reshapes a set of sample
+strings covering every bundled script through both the upstream and the
+subsetted face, and requires the advances to match exactly. A subset that
+shifted an advance would mis-size every banner drawn in that script, silently,
+so the bundle is not written unless they agree.
 
 ### 15.2 Loading
 
-The bundle ships beside the binary and is memory-mapped at startup, so faces
-page in lazily and only the faces actually used occupy resident memory. This
-scales to a large library without a proportionally large binary or a large
-baseline footprint.
+Faces are compiled into the binary. An external bundle memory-mapped at startup
+would trade a smaller binary for a deploy artifact that has to be present for
+anything to render at all, and `geoip.bin`, which is mmap'd, degrades to UTC
+when it is missing rather than failing outright. Fonts have no such fallback.
+
+The resident-memory argument for mmap does not apply either: a compiled-in
+blob lives in the binary's read-only data, which the loader already maps from
+the executable and pages in on demand. Faces that are never touched are never
+resident either way.
 
 System fonts are never loaded. Rendering must be identical across machines, and
-scanning system font directories makes it neither identical nor fast.
+scanning system font directories makes it neither identical nor fast. This is
+enforced by the dependency graph rather than by convention: `resvg` is built
+with default features off, so `fontdb`'s filesystem and `fontconfig` support
+are not compiled in.
 
 ### 15.3 Fallback
 
-Per-script subsetting guarantees that some request will select a face lacking a
-glyph it needs, because `Accept-Language` and `format` can both introduce
-characters the requested family does not cover.
+Some request will always select a face lacking a glyph it needs, because
+`Accept-Language` and `format` can both introduce characters no bundled face
+covers. Four of the languages the service negotiates are among them: Chinese,
+Japanese, Korean and Thai have no coverage in any bundled face, subsetting or
+not.
 
 Resolution walks an ordered chain: the requested face, then a broad-coverage
-face for the resolved script, then a last-resort face, then the missing-glyph
-box. Substitutions are reported in a response header so a caller can tell what
-happened rather than wondering why their font looks wrong.
+face, then a last-resort face. Fallback is whole-string rather than
+per-cluster, so a run that no single face covers settles on the requested face
+and reports itself rather than stitching several faces into one line.
+
+Substitutions are reported in a response header so a caller can tell what
+happened rather than wondering why their font looks wrong, and a run that
+nothing covered is marked `coverage=partial`, which distinguishes missing
+glyphs from a styling mistake.
 
 ### 15.4 Licensing
 
-Every bundled face is openly licensed, with its license recorded in the manifest
-and carried into the build output. Faces that cannot be redistributed are not
-bundled, and metric-compatible open substitutes are used where a proprietary
-face would otherwise be the obvious choice.
+Every bundled face is openly licensed, and faces that cannot be redistributed
+are not bundled: a metric-compatible open substitute is used where a
+proprietary face would otherwise be the obvious choice.
+
+The license travels with the font rather than only with the repository. All
+three faces are OFL-1.1, which requires the copyright notice and the license to
+be distributed alongside the font they cover, and `?text=embed` distributes a
+face to every client that renders the banner. Subsetting drops `name` records
+by default, so the pipeline explicitly retains the copyright notice, the
+license description and the license URL, in the bundle and again in each
+per-request embedded subset. That costs roughly a kilobyte per embedded
+response, which is not optional weight.
+
+The manifest records the SPDX identifier per face, and reads the copyright and
+license URL back off the built artifact rather than restating them, so it
+cannot claim attribution the shipped bytes do not carry. The service logs the
+set at startup.
 
 ### 15.5 Delivery
 

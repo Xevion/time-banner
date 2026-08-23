@@ -72,13 +72,15 @@ exists.
 
 Blocks styling, because text measurement is wrong until faces are real.
 
-- [ ] `xtask` subsetting pipeline per script and weight (`xtask fonts` exists
-      and fetches whole faces, but doesn't subset; `skera` now does per-request
-      subsetting for `?text=embed`, so the crate is already in the tree)
-- [ ] Bundle manifest with coverage and license per face
-- [ ] Memory-mapped bundle loading (system fonts are gone from the dependency
-      graph entirely, not just unused; faces are still `include_bytes!`-embedded
-      rather than an external mmap'd bundle)
+- [x] `xtask` subsetting pipeline (`skera`, in `xtask/src/fonts.rs`; one static
+      artifact per family rather than per weight and script, since dropping the
+      variation tables pins the weight and `?format=` makes a per-script split
+      pointless). 1.52 MB of upstream faces to 426 KB, with advances checked
+      unchanged against the upstream face for every bundled script
+- [x] Bundle manifest with coverage and license per face (coverage read back
+      from each subsetted `cmap`, copyright and license URL read off the built
+      artifact, plus a SHA-256 per face; the manifest is the only committed
+      part of the bundle)
 - [x] Replace estimated text advance with real shaped measurement (`render/font.rs`
       shapes with `harfrust` over the same bytes `usvg` uses, so SVG and PNG
       agree on canvas size by construction)
@@ -89,8 +91,16 @@ Blocks styling, because text measurement is wrong until faces are real.
       (section 15.5). Both real strategies are built; `outline` is the default
 - [x] Remove the proprietary face; substitute a metric-compatible open one
       (Arial → Arimo, all three bundled faces now OFL-1.1 via Google Fonts,
-      commit-pinned and checksum-verified in `xtask/src/main.rs`)
-- [ ] CI regenerates the bundle and verifies it is unchanged
+      commit-pinned and checksum-verified in `xtask/src/fonts.rs`)
+- [x] CI regenerates the bundle and verifies it is unchanged (`just fonts-verify`;
+      compares the manifest it would write against the committed one, which
+      covers the face bytes via the recorded checksums)
+- [x] Retain the OFL `name` records through both subsetting passes, so an
+      embedded face carries the notice and license the license requires
+- [ ] Memory-mapped bundle loading. Deliberately not done: a compiled-in blob
+      is already demand-paged from the executable, and unlike `geoip.bin` a
+      missing font bundle has no degraded mode (section 15.2). Revisit only if
+      the face set grows enough to make binary size matter
 - [ ] Revisit `?text=embed` once a subsetter can instance variable fonts;
       `skera` 0.6 cannot pin an axis, which is why optical sizing is off
       (section 15.6) rather than a per-request choice

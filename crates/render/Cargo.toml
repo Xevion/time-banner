@@ -31,6 +31,7 @@ assert2.workspace = true
 criterion = { version = "0.8.2", features = ["html_reports"] }
 flate2 = "1.1.9"
 rstest.workspace = true
+sha2 = "0.10"
 
 [[bench]]
 name = "render"

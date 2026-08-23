@@ -14,3 +14,6 @@
 # download; not committed, and not required to build (memory-mapped at
 # runtime, not compiled in).
 /crates/core/geoip/geoip.bin
+
+# Subsetted faces built by `just fonts` from the fetched upstream ones.
+/crates/render/fonts/bundle/*.ttf

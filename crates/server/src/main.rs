@@ -58,6 +58,18 @@ async fn main() {
         }
     };
 
+    // Bundling an OFL face carries an attribution obligation, so what is
+    // compiled in says so on every start rather than only in a source comment.
+    for face in time_banner_render::font::bundled_faces() {
+        tracing::info!(
+            family = face.family,
+            license = face.license,
+            copyright = face.copyright,
+            bytes = face.subset_bytes,
+            "bundled face"
+        );
+    }
+
     let app = build_router(geoip);
 
     let addr = SocketAddr::new(config.socket_addr(), config.port);

@@ -12,11 +12,11 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use read_fonts::FontRef;
 use read_fonts::collections::IntSet;
-use read_fonts::types::Tag;
+use read_fonts::types::{NameId, Tag};
 use skera::{Plan, SubsetFlags, subset_font};
 
 use crate::error::RenderError;
-use crate::font::{Family, Shaped};
+use crate::font::{self, Family, Shaped};
 
 /// How text is carried in SVG output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -139,33 +139,30 @@ pub(crate) fn markup(
     Ok(Markup { defs, body })
 }
 
-/// Variation tables, dropped so an embedded subset ships as a static font at
-/// the face's default axis position.
+/// `name` records an embedded subset keeps.
 ///
-/// Every bundled face is a variable font, and a subsetter that cannot pin an
-/// axis has to keep the machinery that drives it. For Inter those tables run
-/// several times the size of the handful of glyphs in a banner, which is the
-/// difference between embedding being competitive and being absurd. Nothing
-/// is lost because the emitted text asks for no axis but the default.
-const VARIATION_TABLES: [&[u8; 4]; 7] = [
-    b"fvar", b"gvar", b"avar", b"cvar", b"HVAR", b"VVAR", b"MVAR",
+/// This is the path that actually hands a bundled face to someone else's
+/// browser, so OFL-1.1's requirement that the copyright notice and license
+/// travel with the font applies to it directly. The bundle retains these
+/// records; re-subsetting per request would strip them again without this.
+const NAME_IDS: [u16; 3] = [
+    0,  // Copyright notice
+    13, // License description
+    14, // License URL
 ];
 
-/// Scripts an embedded subset keeps layout rules for. The bundled faces cover
-/// Latin, Greek and Cyrillic, and `?locale=` can put any of the three on a
-/// banner; every other script's rules are dead weight.
-const LAYOUT_SCRIPTS: [&[u8; 4]; 5] = [b"DFLT", b"latn", b"grek", b"cyrl", b"zinh"];
+/// US English, the only language the bundled faces publish those records in.
+const NAME_LANGUAGE_EN_US: u16 = 0x0409;
 
-/// Layout features an embedded subset keeps.
-///
-/// These are the ones shaping applies without being asked, so measurement
-/// here and shaping in the client both use them. Dropping one would make a
-/// client lay the text out fractionally differently from the canvas measured
-/// for it. Retaining every other feature costs nothing in glyph data and
-/// several kilobytes in layout rules.
-const LAYOUT_FEATURES: [&[u8; 4]; 9] = [
-    b"kern", b"ccmp", b"mark", b"mkmk", b"liga", b"clig", b"calt", b"rlig", b"locl",
-];
+/// OpenType tags are four bytes; the manifest spells them as `str` so the
+/// generated file stays readable.
+fn tag_bytes(tag: &str) -> [u8; 4] {
+    let mut bytes = *b"    ";
+    for (slot, byte) in bytes.iter_mut().zip(tag.bytes()) {
+        *slot = byte;
+    }
+    bytes
+}
 
 /// Subsets `family` down to the codepoints `text` uses.
 ///
@@ -181,19 +178,24 @@ fn subset(family: Family, text: &str) -> Result<Vec<u8>, RenderError> {
         unicodes.insert(c as u32);
     }
 
-    let mut drop_tables = IntSet::empty();
-    for tag in VARIATION_TABLES {
-        drop_tables.insert(Tag::new(tag));
+    let mut name_ids = IntSet::empty();
+    for id in NAME_IDS {
+        name_ids.insert(NameId::new(id));
     }
+    let mut name_languages = IntSet::empty();
+    name_languages.insert(NAME_LANGUAGE_EN_US);
 
+    // The bundle already dropped the variation tables, so only codepoints and
+    // layout are left to cut. An empty layout set retains nothing rather than
+    // everything, so the bundle's own retention list has to be restated here
+    // or this pass would drop `kern` and shift every proportional advance.
     let mut layout_scripts = IntSet::empty();
-    for tag in LAYOUT_SCRIPTS {
-        layout_scripts.insert(Tag::new(tag));
+    for tag in font::LAYOUT_SCRIPTS {
+        layout_scripts.insert(Tag::new(&tag_bytes(tag)));
     }
-
     let mut layout_features = IntSet::empty();
-    for tag in LAYOUT_FEATURES {
-        layout_features.insert(Tag::new(tag));
+    for tag in font::LAYOUT_FEATURES {
+        layout_features.insert(Tag::new(&tag_bytes(tag)));
     }
 
     let plan = Plan::new(
@@ -201,11 +203,11 @@ fn subset(family: Family, text: &str) -> Result<Vec<u8>, RenderError> {
         &unicodes,
         &font,
         SubsetFlags::SUBSET_FLAGS_NO_HINTING | SubsetFlags::SUBSET_FLAGS_NOTDEF_OUTLINE,
-        &drop_tables,
+        &IntSet::empty(),
         &layout_scripts,
         &layout_features,
-        &IntSet::empty(),
-        &IntSet::empty(),
+        &name_ids,
+        &name_languages,
     );
 
     subset_font(&font, &plan)

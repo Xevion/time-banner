@@ -19,9 +19,73 @@ use std::sync::LazyLock;
 
 use harfrust::{FontRef, ShapeOptions, ShaperData, ShaperInstance, Tag, UnicodeBuffer, Variation};
 
-pub(crate) const ARIMO: &[u8] = include_bytes!("../fonts/arimo.ttf");
-pub(crate) const INTER: &[u8] = include_bytes!("../fonts/inter.ttf");
-pub(crate) const ROBOTO_MONO: &[u8] = include_bytes!("../fonts/RobotoMono.ttf");
+pub(crate) const ARIMO: &[u8] = include_bytes!("../fonts/bundle/arimo.ttf");
+pub(crate) const INTER: &[u8] = include_bytes!("../fonts/bundle/inter.ttf");
+pub(crate) const ROBOTO_MONO: &[u8] = include_bytes!("../fonts/bundle/roboto-mono.ttf");
+
+/// Provenance and coverage for one bundled face.
+///
+/// The values come from `cargo xtask fonts`, which reads them back off the
+/// artifact it just built rather than restating what it asked for. A face
+/// that lost a script to subsetting therefore reports the loss instead of
+/// continuing to advertise it.
+#[derive(Debug, Clone, Copy)]
+pub struct BundledFace {
+    /// The `?font=` spelling.
+    pub key: &'static str,
+    /// Family name, as SVG `font-family` spells it.
+    pub family: &'static str,
+    /// Filename within the bundle.
+    pub file_name: &'static str,
+    /// SPDX identifier.
+    pub license: &'static str,
+    /// Copyright notice, taken from the face's own `name` table.
+    pub copyright: &'static str,
+    /// License URL, taken from the face's own `name` table.
+    pub license_url: &'static str,
+    /// SHA-256 of the upstream face this was subsetted from.
+    pub source_sha256: &'static str,
+    /// Size of the upstream face, before subsetting.
+    pub source_bytes: usize,
+    /// Size of the bundled face.
+    pub subset_bytes: usize,
+    /// SHA-256 of the bundled face. The bundle itself is not committed, so
+    /// this is what pins the bytes the manifest claims to describe.
+    pub subset_sha256: &'static str,
+    /// Codepoints the face can draw, as inclusive ranges.
+    pub coverage: &'static [(u32, u32)],
+}
+
+impl BundledFace {
+    /// Whether the face has a glyph for `c`.
+    pub fn covers(&self, c: char) -> bool {
+        let codepoint = c as u32;
+        self.coverage
+            .binary_search_by(|(first, last)| match () {
+                _ if *last < codepoint => std::cmp::Ordering::Less,
+                _ if *first > codepoint => std::cmp::Ordering::Greater,
+                _ => std::cmp::Ordering::Equal,
+            })
+            .is_ok()
+    }
+}
+
+include!("../fonts/bundle/manifest.rs");
+
+/// The bytes compiled in for a family, so a test can check them against what
+/// the manifest says they are.
+pub fn face_bytes(family: Family) -> &'static [u8] {
+    family.data()
+}
+
+/// Every face compiled into the binary, with its license and coverage.
+///
+/// Bundling an OFL face carries an attribution obligation, so this is public
+/// and the server reports it at startup rather than leaving it to a comment
+/// somewhere.
+pub fn bundled_faces() -> &'static [BundledFace] {
+    FACES
+}
 
 const WGHT: Tag = Tag::from_be_bytes(*b"wght");
 
@@ -64,6 +128,14 @@ impl Family {
             Family::RobotoMono => "roboto-mono",
             Family::Arimo => "arimo",
         }
+    }
+
+    /// This family's bundle entry.
+    pub fn manifest(self) -> &'static BundledFace {
+        FACES
+            .iter()
+            .find(|face| face.key == self.as_str())
+            .expect("every family has a bundle entry")
     }
 
     pub(crate) fn data(self) -> &'static [u8] {
