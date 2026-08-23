@@ -5,9 +5,7 @@ use resvg::{tiny_skia, usvg};
 
 use crate::error::RenderError;
 
-const ARIMO: &[u8] = include_bytes!("../fonts/arimo.ttf");
-const INTER: &[u8] = include_bytes!("../fonts/inter.ttf");
-const ROBOTO_MONO: &[u8] = include_bytes!("../fonts/RobotoMono.ttf");
+use crate::font::{ARIMO, INTER, ROBOTO_MONO};
 
 pub struct Rasterizer {
     font_db: Arc<fontdb::Database>,
@@ -42,6 +40,39 @@ impl Rasterizer {
         };
         usvg::Tree::from_data(svg_data, &opt)
             .map_err(|e| RenderError::rasterize("failed to parse SVG", e))
+    }
+
+    /// Re-serializes `svg_data` with its text baked into filled paths.
+    ///
+    /// `usvg` shapes the text against the same bundled faces the rasterizer
+    /// uses, so the outlined document and the PNG of the same input are drawn
+    /// from one layout. What comes back needs no font on the client at all,
+    /// which is the only way an SVG renders as intended on a surface that
+    /// merely embeds it.
+    pub fn outline(&self, svg_data: &[u8]) -> Result<String, RenderError> {
+        let tree = self.parse(svg_data)?;
+        let size = tree.size();
+        let outlined = tree.to_string(&usvg::WriteOptions {
+            // Font units at banner sizes need about two fractional digits;
+            // the default of eight spends bytes on noise below a pixel.
+            coordinates_precision: 2,
+            transforms_precision: 4,
+            ..Default::default()
+        });
+
+        // `usvg` writes `width` and `height` but no `viewBox`, which leaves the
+        // drawing a fixed size: a client that styles the image to a different
+        // width gets whitespace rather than a scaled banner. Restoring it keeps
+        // outlined output as flexible as the live-text form it replaces.
+        Ok(outlined.replacen(
+            "<svg",
+            &format!(
+                "<svg viewBox=\"0 0 {} {}\"",
+                size.width() as i64,
+                size.height() as i64
+            ),
+            1,
+        ))
     }
 
     /// Rasterizes a parsed tree, applying the banner's fixed 10% zoom-out.

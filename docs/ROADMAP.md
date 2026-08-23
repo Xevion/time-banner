@@ -72,19 +72,28 @@ exists.
 
 Blocks styling, because text measurement is wrong until faces are real.
 
-- [ ] `xtask` subsetting pipeline over HarfBuzz, per script and weight
-      (`xtask fonts` exists and fetches whole faces, but doesn't subset)
+- [ ] `xtask` subsetting pipeline per script and weight (`xtask fonts` exists
+      and fetches whole faces, but doesn't subset; `skera` now does per-request
+      subsetting for `?text=embed`, so the crate is already in the tree)
 - [ ] Bundle manifest with coverage and license per face
-- [ ] Memory-mapped bundle loading; stop loading system fonts (system fonts
-      are gone, but faces are `include_bytes!`-embedded, not an external
-      mmap'd bundle)
-- [ ] Replace estimated text advance with real shaped measurement
-- [ ] Ordered fallback chain with substitution reported in a header
-- [ ] `?font=` over the manifest
+- [ ] Memory-mapped bundle loading (system fonts are gone from the dependency
+      graph entirely, not just unused; faces are still `include_bytes!`-embedded
+      rather than an external mmap'd bundle)
+- [x] Replace estimated text advance with real shaped measurement (`render/font.rs`
+      shapes with `harfrust` over the same bytes `usvg` uses, so SVG and PNG
+      agree on canvas size by construction)
+- [x] Ordered fallback chain with substitution reported in a header (whole-string,
+      not per-cluster; the `Font` response header lists the faces tried in order)
+- [x] `?font=` over the bundled families, with a per-mode default
+- [x] Decide how SVG output carries its font: `?text=outline|embed|live`
+      (section 15.5). Both real strategies are built; `outline` is the default
 - [x] Remove the proprietary face; substitute a metric-compatible open one
       (Arial → Arimo, all three bundled faces now OFL-1.1 via Google Fonts,
       commit-pinned and checksum-verified in `xtask/src/main.rs`)
 - [ ] CI regenerates the bundle and verifies it is unchanged
+- [ ] Revisit `?text=embed` once a subsetter can instance variable fonts;
+      `skera` 0.6 cannot pin an axis, which is why optical sizing is off
+      (section 15.6) rather than a per-request choice
 
 ## Phase 5: modes
 

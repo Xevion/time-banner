@@ -16,6 +16,7 @@ use jiff::{Timestamp, tz::TimeZone};
 use memmap2::Mmap;
 use time_banner_core::geoip::GeoipDb;
 use time_banner_core::{parse_time_value, resolve_timezone};
+use time_banner_render::{Family, TextMode};
 
 use crate::client_ip;
 use crate::error::TimeBannerError;
@@ -41,6 +42,10 @@ pub struct Resolution {
     /// the client address this way carry `Cache-Control: private`, per
     /// SPEC.md section 6.2.
     pub used_geolocation: bool,
+    /// Face to draw in. `None` leaves the choice to the mode's default.
+    pub font: Option<Family>,
+    /// How SVG output carries its text.
+    pub text_mode: TextMode,
 }
 
 /// Routes with no shared-cache audience, so `tz` defaults to `auto` here
@@ -99,6 +104,29 @@ impl Resolution {
             None => wall_clock,
         };
 
+        let font = params
+            .get("font")
+            .map(|raw| {
+                raw.parse::<Family>()
+                    .map_err(|_| TimeBannerError::UnknownValue {
+                        parameter: "font",
+                        value: raw.clone(),
+                    })
+            })
+            .transpose()?;
+
+        let text_mode = params
+            .get("text")
+            .map(|raw| {
+                raw.parse::<TextMode>()
+                    .map_err(|_| TimeBannerError::UnknownValue {
+                        parameter: "text mode",
+                        value: raw.clone(),
+                    })
+            })
+            .transpose()?
+            .unwrap_or_default();
+
         let format = params.get("format").cloned();
         let locale = crate::locale::resolve(
             params.get("locale").map(String::as_str),
@@ -111,6 +139,8 @@ impl Resolution {
             format,
             locale,
             used_geolocation,
+            font,
+            text_mode,
         })
     }
 }

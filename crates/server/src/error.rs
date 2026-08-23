@@ -23,6 +23,12 @@ pub enum TimeBannerError {
     /// A `?format=` string or its expansion exceeded a render bound.
     #[error("Payload too large: {0}")]
     PayloadTooLarge(String),
+    /// A presentation parameter named something the service doesn't have.
+    #[error("Unknown {parameter}: {value:?}")]
+    UnknownValue {
+        parameter: &'static str,
+        value: String,
+    },
     /// Internal errors not otherwise classified, such as extractor failures.
     #[error("Internal error: {0}")]
     Internal(String),
@@ -62,6 +68,7 @@ impl IntoResponse for TimeBannerError {
             TimeBannerError::PayloadTooLarge(_) => {
                 (StatusCode::PAYLOAD_TOO_LARGE, "PayloadTooLarge")
             }
+            TimeBannerError::UnknownValue { .. } => (StatusCode::BAD_REQUEST, "UnknownValue"),
             TimeBannerError::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Internal"),
         };
 

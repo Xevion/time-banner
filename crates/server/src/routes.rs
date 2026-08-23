@@ -9,13 +9,13 @@ use jiff::Timestamp;
 use jiff::tz::TimeZone;
 use time_banner_core::parse_time_value;
 use time_banner_render::{
-    OutputForm, OutputFormat, RenderContext, convert_png_to_ico, generate_favicon_png_bytes,
-    template::render_index_page,
+    OutputForm, OutputFormat, RenderContext, Rendered, convert_png_to_ico,
+    generate_favicon_png_bytes, template::render_index_page,
 };
 
 /// Renders a time value, moving actual rasterization off the async executor
 /// for PNG output. SVG output never rasterizes, so it stays inline.
-async fn render_time_async(context: RenderContext) -> Result<Vec<u8>, TimeBannerError> {
+async fn render_time_async(context: RenderContext) -> Result<Rendered, TimeBannerError> {
     match context.output_format {
         OutputFormat::Svg => context.render().map_err(TimeBannerError::from),
         OutputFormat::Png => tokio::task::spawn_blocking(move || context.render())
@@ -54,7 +54,7 @@ async fn banner(
     let locale = resolution.locale.clone();
 
     let value = parse_time_value(raw_time, resolution.now, &resolution.tz)?;
-    let bytes = render_time_async(RenderContext {
+    let rendered = render_time_async(RenderContext {
         value,
         output_form,
         output_format,
@@ -62,6 +62,8 @@ async fn banner(
         now: resolution.now,
         format: resolution.format,
         locale: time_banner_render::locale::language_for(&locale),
+        font: resolution.font,
+        text_mode: resolution.text_mode,
     })
     .await?;
 
@@ -72,7 +74,16 @@ async fn banner(
         headers.append(header::VARY, HeaderValue::from_static("Accept-Language"));
     }
 
-    Ok((StatusCode::OK, headers, bytes))
+    // More than one entry means the requested face didn't cover the string and
+    // something else drew it, which is otherwise invisible to the caller.
+    if let Some(font) = rendered.font.as_deref()
+        && let Ok(value) = HeaderValue::from_str(font)
+    {
+        headers.insert("font", value);
+        headers.append(header::VARY, HeaderValue::from_static("Font"));
+    }
+
+    Ok((StatusCode::OK, headers, rendered.bytes))
 }
 
 /// Root handler - renders a minimal demo page with live examples and usage docs.

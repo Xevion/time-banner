@@ -4,11 +4,11 @@
 
 use std::time::Duration;
 
-use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
+use criterion::{BatchSize, Criterion, Throughput, criterion_group};
 use jiff::{Timestamp, tz::TimeZone};
 use time_banner_render::raster::Rasterizer;
 use time_banner_render::template::RenderContext;
-use time_banner_render::{OutputForm, OutputFormat};
+use time_banner_render::{OutputForm, OutputFormat, TextMode};
 
 /// Fixed reference instant so bench output is stable across runs.
 const NOW_EPOCH: i64 = 1_700_000_000;
@@ -32,6 +32,13 @@ fn context(offset: i64, form: OutputForm) -> RenderContext {
     context_in(offset, form, OutputFormat::Svg)
 }
 
+fn context_with_mode(offset: i64, form: OutputForm, text_mode: TextMode) -> RenderContext {
+    RenderContext {
+        text_mode,
+        ..context_in(offset, form, OutputFormat::Svg)
+    }
+}
+
 fn context_in(offset: i64, form: OutputForm, format: OutputFormat) -> RenderContext {
     let now = now();
     let value = Timestamp::from_second(now.as_second() + offset).unwrap();
@@ -43,6 +50,8 @@ fn context_in(offset: i64, form: OutputForm, format: OutputFormat) -> RenderCont
         now,
         format: None,
         locale: None,
+        font: None,
+        text_mode: TextMode::default(),
     }
 }
 
@@ -50,6 +59,7 @@ fn svg_for(offset: i64, form: OutputForm) -> String {
     context(offset, form)
         .render_svg()
         .expect("template renders")
+        .svg
 }
 
 fn bench_template(c: &mut Criterion) {
@@ -119,7 +129,10 @@ fn bench_end_to_end_case(
     form: OutputForm,
     format: OutputFormat,
 ) {
-    let bytes = context_in(offset, form, format.clone()).render().unwrap();
+    let bytes = context_in(offset, form, format.clone())
+        .render()
+        .unwrap()
+        .bytes;
     group.throughput(Throughput::Bytes(bytes.len() as u64));
     group.bench_function(id, |b| {
         b.iter(|| context_in(offset, form, format.clone()).render().unwrap())
@@ -166,6 +179,70 @@ fn bench_end_to_end(c: &mut Criterion) {
     group.finish();
 }
 
+/// SVG output used to be pure string formatting. Outlining parses and
+/// re-serializes the document, and embedding subsets a face, so both move real
+/// work onto what was the cheapest path in the service.
+fn bench_text_mode(c: &mut Criterion) {
+    let mut group = c.benchmark_group("text_mode");
+    for mode in [TextMode::Live, TextMode::Outline, TextMode::Embed] {
+        for &(label, offset) in DURATIONS {
+            let context = context_with_mode(offset, OutputForm::Relative, mode);
+            group.throughput(Throughput::Bytes(
+                context.render_svg().unwrap().svg.len() as u64
+            ));
+            group.bench_function(format!("{}_{label}", mode.as_str()), |b| {
+                b.iter(|| {
+                    context_with_mode(offset, OutputForm::Relative, mode)
+                        .render_svg()
+                        .unwrap()
+                })
+            });
+        }
+    }
+    group.finish();
+}
+
+/// Byte cost of each delivery mode, raw and as the server actually ships it.
+///
+/// The service compresses every response, and the three modes compress very
+/// differently -- outlined path data is highly repetitive, while a base64
+/// font subset is close to incompressible -- so the raw sizes on their own
+/// would rank them wrongly.
+fn report_text_mode_sizes() {
+    println!("\ntext mode output sizes (bytes)");
+    println!(
+        "{:<10} {:<24} {:>8} {:>10} {:>8}",
+        "mode", "case", "raw", "gzipped", "ratio"
+    );
+
+    for mode in [TextMode::Live, TextMode::Outline, TextMode::Embed] {
+        for (label, form, offset) in [
+            ("absolute timestamp", OutputForm::Absolute, 0),
+            ("relative, short", OutputForm::Relative, -5),
+            ("relative, long", OutputForm::Relative, -5 * 365 * 86_400),
+        ] {
+            let svg = context_with_mode(offset, form, mode)
+                .render_svg()
+                .unwrap()
+                .svg;
+            let raw = svg.len();
+
+            let mut encoder =
+                flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+            std::io::Write::write_all(&mut encoder, svg.as_bytes()).unwrap();
+            let compressed = encoder.finish().unwrap().len();
+
+            println!(
+                "{:<10} {:<24} {raw:>8} {compressed:>10} {:>7.1}x",
+                mode.as_str(),
+                label,
+                raw as f64 / compressed as f64,
+            );
+        }
+    }
+    println!();
+}
+
 /// Cost of building a `Rasterizer` (fontdb construction from the bundled
 /// fonts), relevant for process startup, not per-request latency.
 fn bench_startup(c: &mut Criterion) {
@@ -184,6 +261,11 @@ fn fast_criterion() -> Criterion {
 criterion_group! {
     name = benches;
     config = fast_criterion();
-    targets = bench_template, bench_svg_parse, bench_rasterize, bench_encode_png, bench_end_to_end, bench_startup
+    targets = bench_template, bench_svg_parse, bench_rasterize, bench_encode_png, bench_end_to_end, bench_text_mode, bench_startup
 }
-criterion_main!(benches);
+
+fn main() {
+    report_text_mode_sizes();
+    benches();
+    Criterion::default().configure_from_args().final_summary();
+}

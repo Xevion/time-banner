@@ -6,9 +6,11 @@ use tera::{Context, Tera};
 use timeago::{BoxedLanguage, Formatter};
 
 use crate::error::RenderError;
+use crate::font::{self, Family, Shaped};
 use crate::format::format_absolute;
 use crate::locale;
-use crate::pipeline::OutputFormat;
+use crate::pipeline::{OutputFormat, RASTERIZER};
+use crate::svg_text::{self, TextMode};
 
 /// Global Tera template engine instance. Templates are compiled into the
 /// binary, so there is no filesystem path to resolve at startup.
@@ -39,6 +41,20 @@ pub enum OutputForm {
     Clock,
 }
 
+impl OutputForm {
+    /// The face this mode draws in when `?font=` says nothing.
+    ///
+    /// Absolute output is mostly digits, and a monospace face keeps the canvas
+    /// from twitching as they tick over. Relative output is words, which read
+    /// better proportional.
+    fn default_family(self) -> Family {
+        match self {
+            OutputForm::Absolute | OutputForm::Clock => Family::RobotoMono,
+            OutputForm::Relative => Family::Inter,
+        }
+    }
+}
+
 /// Context passed to template renderer containing all necessary data.
 pub struct RenderContext {
     pub value: Timestamp,
@@ -54,6 +70,10 @@ pub struct RenderContext {
     /// Translation relative output renders words in. `None` draws in
     /// English.
     pub locale: Option<BoxedLanguage>,
+    /// Face to draw in. `None` takes the mode's default.
+    pub font: Option<Family>,
+    /// How SVG output carries its text.
+    pub text_mode: TextMode,
 }
 
 /// A 2D point in the clock face's coordinate space.
@@ -99,23 +119,41 @@ fn calculate_clock_hands(time: Timestamp, tz: &TimeZone) -> (Point, Point) {
     (hour_point, minute_point)
 }
 
-/// Font size (px) used by "basic.svg", and its approximate monospace
-/// character-advance ratio, used to size the SVG canvas to fit the text.
+/// Geometry of "basic.svg", in pixels.
 const BASIC_FONT_SIZE: f64 = 27.0;
-const BASIC_CHAR_WIDTH_RATIO: f64 = 0.6;
 const BASIC_PADDING_X: f64 = 12.0;
 const BASIC_HEIGHT: f64 = 34.0;
+const BASIC_BASELINE: f64 = 24.0;
 
-/// Estimates the pixel width needed to render `text` in "basic.svg"'s monospace font.
-fn estimate_basic_width(text: &str) -> f64 {
-    let char_width = BASIC_FONT_SIZE * BASIC_CHAR_WIDTH_RATIO;
-    text.chars().count() as f64 * char_width + BASIC_PADDING_X * 2.0
-}
+/// Draws `text` into "basic.svg", sized to the advance the face actually
+/// produces rather than to a guess about it.
+fn render_basic(
+    text: &str,
+    family: Family,
+    text_mode: TextMode,
+) -> Result<(String, Shaped), RenderError> {
+    let shaped = font::shape(family, text, BASIC_FONT_SIZE);
+    let width = shaped.advance_px() + BASIC_PADDING_X * 2.0;
+    let markup = svg_text::markup(
+        text_mode,
+        text,
+        &shaped,
+        BASIC_FONT_SIZE,
+        BASIC_PADDING_X,
+        BASIC_BASELINE,
+    )?;
 
-fn insert_basic_text(template_context: &mut Context, text: &str) {
-    template_context.insert("text", text);
-    template_context.insert("width", &format!("{:.0}", estimate_basic_width(text)));
-    template_context.insert("height", &format!("{:.0}", BASIC_HEIGHT));
+    let mut template_context = Context::new();
+    template_context.insert("width", &format!("{width:.0}"));
+    template_context.insert("height", &format!("{BASIC_HEIGHT:.0}"));
+    template_context.insert("defs", &markup.defs);
+    template_context.insert("body", &markup.body);
+
+    let svg = TEMPLATES
+        .render("basic.svg", &template_context)
+        .map_err(|e| RenderError::template("template rendering failed", e))?;
+
+    Ok((svg, shaped))
 }
 
 /// Default `strftime` pattern absolute output is drawn with, used when
@@ -131,10 +169,13 @@ impl RenderContext {
     /// Uses different templates based on output form:
     /// - Relative/Absolute: "basic.svg" with text content
     /// - Clock: "clock.svg" with calculated hand positions
-    pub fn render_svg(self) -> Result<String, RenderError> {
-        let mut template_context = Context::new();
+    pub fn render_svg(self) -> Result<Drawn, RenderError> {
+        let family = self
+            .font
+            .unwrap_or_else(|| self.output_form.default_family());
+        let text_mode = self.text_mode;
 
-        let rendered = match self.output_form {
+        let (svg, shaped) = match self.output_form {
             OutputForm::Relative => {
                 let elapsed = self.value.duration_since(self.now).unsigned_abs();
                 let lang = self.locale.unwrap_or_else(locale::default_language);
@@ -143,31 +184,53 @@ impl RenderContext {
                     formatter.ago("from now");
                 }
                 let text = formatter.convert(elapsed);
-                insert_basic_text(&mut template_context, &text);
-                TEMPLATES.render("basic.svg", &template_context)
+                let (svg, shaped) = render_basic(&text, family, text_mode)?;
+                (svg, Some(shaped))
             }
             OutputForm::Absolute => {
                 let zoned = self.value.to_zoned(self.tz.clone());
                 let pattern = self.format.as_deref().unwrap_or(ABSOLUTE_FORMAT);
                 let text = format_absolute(&zoned, pattern, MAX_FORMAT_OUTPUT_BYTES)?;
-                insert_basic_text(&mut template_context, &text);
-                TEMPLATES.render("basic.svg", &template_context)
+                let (svg, shaped) = render_basic(&text, family, text_mode)?;
+                (svg, Some(shaped))
             }
             OutputForm::Clock => {
                 let (hour, minute) = calculate_clock_hands(self.value, &self.tz);
 
+                let mut template_context = Context::new();
                 // Format to 2 decimal places to avoid precision issues
                 template_context.insert("hour_x", &format!("{:.2}", hour.x));
                 template_context.insert("hour_y", &format!("{:.2}", hour.y));
                 template_context.insert("minute_x", &format!("{:.2}", minute.x));
                 template_context.insert("minute_y", &format!("{:.2}", minute.y));
 
-                TEMPLATES.render("clock.svg", &template_context)
+                let svg = TEMPLATES
+                    .render("clock.svg", &template_context)
+                    .map_err(|e| RenderError::template("template rendering failed", e))?;
+                (svg, None)
             }
         };
 
-        rendered.map_err(|e| RenderError::template("template rendering failed", e))
+        // The clock draws no text, so there is nothing to outline and no face
+        // to report.
+        let svg = match (text_mode, shaped.is_some()) {
+            (TextMode::Outline, true) => RASTERIZER.outline(svg.as_bytes())?,
+            _ => svg,
+        };
+
+        Ok(Drawn {
+            svg,
+            font: shaped.map(|shaped| shaped.header_value()),
+        })
     }
+}
+
+/// A rendered SVG document and the faces that drew its text.
+pub struct Drawn {
+    pub svg: String,
+    /// Faces used, in fallback order, for the `Font` response header. `None`
+    /// where the output draws no text.
+    pub font: Option<String>,
 }
 
 /// A single live example shown on the index page.
@@ -204,6 +267,14 @@ pub fn render_index_page(now: Timestamp) -> Result<String, tera::Error> {
         Example {
             label: "PNG output",
             path: format!("/relative/{}.png", epoch - 3600),
+        },
+        Example {
+            label: "A different face",
+            path: format!("/absolute/{epoch}?font=inter"),
+        },
+        Example {
+            label: "Selectable text, face embedded",
+            path: format!("/absolute/{epoch}?text=embed"),
         },
         Example {
             label: "Analog clock favicon",
@@ -248,6 +319,8 @@ mod tests {
             now,
             format: None,
             locale: None,
+            font: None,
+            text_mode: TextMode::Live,
         }
     }
 
@@ -256,7 +329,8 @@ mod tests {
         let now = Timestamp::now();
         let svg = context(now, now, OutputForm::Absolute)
             .render_svg()
-            .expect("basic.svg should render");
+            .expect("basic.svg should render")
+            .svg;
         assert!(svg.contains("viewBox="));
         assert!(!svg.contains("width=\"0\""));
     }
@@ -267,7 +341,8 @@ mod tests {
         let future = now.checked_add(1.hour()).unwrap();
         let svg = context(future, now, OutputForm::Relative)
             .render_svg()
-            .expect("basic.svg should render");
+            .expect("basic.svg should render")
+            .svg;
         assert!(!svg.contains("???"));
         assert!(svg.contains("from now"));
     }
@@ -291,9 +366,12 @@ mod tests {
             now: value,
             format: None,
             locale: None,
+            font: None,
+            text_mode: TextMode::Live,
         }
         .render_svg()
-        .expect("basic.svg should render");
+        .expect("basic.svg should render")
+        .svg;
 
         assert!(svg.contains("2023-11-14 16:13:20 CST"));
     }
@@ -310,9 +388,12 @@ mod tests {
             now: value,
             format: None,
             locale: None,
+            font: None,
+            text_mode: TextMode::Live,
         }
         .render_svg()
-        .expect("basic.svg should render");
+        .expect("basic.svg should render")
+        .svg;
 
         assert!(svg.contains("2023-11-14 16:13:20 -06"));
     }
@@ -329,9 +410,12 @@ mod tests {
             now: value,
             format: Some("%Y".to_string()),
             locale: None,
+            font: None,
+            text_mode: TextMode::Live,
         }
         .render_svg()
-        .expect("basic.svg should render");
+        .expect("basic.svg should render")
+        .svg;
 
         assert!(svg.contains("2023"));
         assert!(!svg.contains("2023-11-14"));
@@ -350,9 +434,12 @@ mod tests {
             now,
             format: None,
             locale: crate::locale::language_for("fr"),
+            font: None,
+            text_mode: TextMode::Live,
         }
         .render_svg()
-        .expect("basic.svg should render");
+        .expect("basic.svg should render")
+        .svg;
 
         assert!(svg.contains("heure"));
     }

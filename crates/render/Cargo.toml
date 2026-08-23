@@ -11,7 +11,7 @@ repository.workspace = true
 name = "time_banner_render"
 
 [dependencies]
-resvg = "0.48"
+resvg = { version = "0.48", default-features = false, features = ["text"] }
 tera = "2"
 timeago = "0.6"
 serde = { version = "1.0", features = ["derive"] }
@@ -21,10 +21,15 @@ thiserror = "2.0"
 tracing = "0.1"
 jiff = "0.2.35"
 isolang = "2.4.0"
+harfrust = "0.12"
+base64 = "0.23"
+skera = "0.6"
+read-fonts = "0.43"
 
 [dev-dependencies]
 assert2.workspace = true
 criterion = { version = "0.8.2", features = ["html_reports"] }
+flate2 = "1.1.9"
 rstest.workspace = true
 
 [[bench]]

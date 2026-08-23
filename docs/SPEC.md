@@ -177,7 +177,8 @@ a known origin.
 | --------- | ---------------------- | -------------------------------------------- |
 | `style`   | `plain`                | section 4                                    |
 | `theme`   | `auto`                 | `auto`, `light`, `dark`                      |
-| `font`    | `inter`                | any family in the bundle manifest            |
+| `font`    | per mode, see below    | any family in the bundle manifest            |
+| `text`    | `outline`              | `outline`, `embed`, `live`; SVG only         |
 | `scale`   | `1`                    | `0.5` to `4`, rendered dimensions multiplier |
 | `label`   | none                   | badge label text, `badge` and `bar` only     |
 | `format`  | see below              | `strftime`-style, `absolute` only            |
@@ -187,6 +188,15 @@ a known origin.
 | `static`  | `false`                | section 9.4                                  |
 
 `format` defaults to `%Y-%m-%d %H:%M:%S %Z`. Expansion is bounded (section 12).
+
+`font` has no single default, because the modes want different things from a
+face. `absolute` draws mostly digits and defaults to `roboto-mono`, so the
+canvas does not twitch as they tick over. `relative` draws words and defaults
+to `inter`, which reads better proportional. An explicit `?font=` overrides
+either.
+
+`text` is described in section 15.5. It has no effect on raster formats, which
+carry their own glyphs by definition.
 
 ### 5.1 Themes
 
@@ -550,7 +560,14 @@ README author can control.
 
 `Timezone` and `Date-Now` are unprefixed deliberately. The `X-` convention was
 deprecated by [RFC 6648](https://www.rfc-editor.org/rfc/rfc6648) and there is no
-reason to carry it.
+reason to carry it. `Font` follows the same rule.
+
+`Font` lists the faces that drew the response, in the order they were tried, so
+a single entry means the requested face covered the string and more than one
+means it did not. A `coverage=partial` parameter says the chain was exhausted
+and some codepoint is drawn as a missing-glyph box, which is otherwise
+indistinguishable from a styling mistake. Responses that draw no text omit the
+header entirely.
 
 Response headers.
 
@@ -564,6 +581,7 @@ Response headers.
 | `Vary`             | every negotiated input that affected this response |
 | `Date`             | reference instant used                             |
 | `Timezone`         | resolved IANA identifier                           |
+| `Font`             | faces used, in fallback order                      |
 | `Accept-CH`        | client hints the service will use                  |
 | `Link`             | `rel=alternate` for other formats                  |
 | `RateLimit`        | remaining budget                                   |
@@ -597,13 +615,14 @@ Everything before them is cheap enough to run inline.
 
 ### 14.1 Text measurement
 
-Canvas size must fit the text. The current implementation multiplies character
-count by a hardcoded advance ratio, which is wrong for any font that is not
-monospace and wrong for monospace fonts whose ratio differs.
+Canvas size must fit the text, so the string is shaped with the face that will
+draw it and the resulting advance sets the width.
 
-Real measurement means shaping the string with the actual face and reading the
-resulting advance. The shaper is already present as a transitive dependency of
-the renderer, so this is a correction rather than a new capability.
+Measurement runs the renderer's own shaper over the renderer's own font bytes,
+which is what makes an SVG and the PNG of the same request agree on their
+dimensions rather than merely tending to. Anything that changes how glyphs are
+positioned has to change in both places at once or in neither, and the axis
+settings in section 15.5 are the reason optical sizing is off.
 
 ### 14.2 Cache
 
@@ -665,6 +684,56 @@ Every bundled face is openly licensed, with its license recorded in the manifest
 and carried into the build output. Faces that cannot be redistributed are not
 bundled, and metric-compatible open substitutes are used where a proprietary
 face would otherwise be the obvious choice.
+
+### 15.5 Delivery
+
+Raster formats carry their glyphs as pixels, so nothing here applies to them.
+SVG is the default format and is served as a document, which leaves the
+question of where the face comes from once the image is somewhere else. A
+`font-family` naming a bundled face is a request the client is free to ignore,
+and on the surfaces this service exists for it almost always does: a README
+badge is rendered by a browser that has never heard of Roboto Mono, in a canvas
+this service measured for Roboto Mono.
+
+`?text=` decides how that is answered.
+
+`outline` converts every glyph to a filled path. Nothing is asked of the client
+and the document renders identically everywhere, at the cost of being neither
+selectable nor searchable, and of a document several times larger than the
+alternatives.
+
+`embed` keeps the text live and carries the face with it, subsetted to the
+glyphs that string actually uses and inlined as a `data:` URI. It stays
+selectable, and it is smaller than `outline`, because a few kilobytes of font
+covers what many kilobytes of path data would. What it costs is certainty:
+SVG-as-image is a restricted rendering mode, and a client that declines to load
+an embedded face falls back to the same wrong-font rendering `live` gives.
+
+`live` names the face and carries nothing. It is a fraction of the size of
+either alternative and correct only where the face is already installed, which
+makes it the right answer for a caller rendering into a context they control,
+and the wrong one everywhere else.
+
+`outline` is the default because it is the only one that is correct without
+knowing anything about the client.
+
+### 15.6 Variation axes
+
+Every bundled face is a variable font, and the axis position is pinned to
+`wght` 400 with every other axis left at its default. Optical sizing is
+deliberately not applied, though the renderer and browsers would both otherwise
+drive `opsz` from the font size.
+
+The reason is that an axis is only free when the face is delivered whole. A
+face that must be embedded per request has to carry the machinery that drives
+its axes, and the variation tables for a text face run several times the size
+of the handful of glyphs a banner needs. Banners draw at a single size, where
+optical sizing is invisible; paying for it in every embedded response is not
+worth an improvement nobody can see.
+
+This is a constraint on all three delivery modes at once, not just `embed`.
+Measurement, rasterization, and the client have to place glyphs identically, so
+an axis is either varied everywhere or nowhere.
 
 ## 16. Web interface
 

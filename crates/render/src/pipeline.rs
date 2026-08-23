@@ -5,10 +5,11 @@ use jiff::{Timestamp, tz::TimeZone};
 
 use crate::error::RenderError;
 use crate::raster::Rasterizer;
+use crate::svg_text::TextMode;
 use crate::template::{OutputForm, RenderContext};
 
 /// Shared rasterizer, built once and reused across requests.
-static RASTERIZER: LazyLock<Rasterizer> = LazyLock::new(Rasterizer::new);
+pub(crate) static RASTERIZER: LazyLock<Rasterizer> = LazyLock::new(Rasterizer::new);
 
 /// Output format for rendered time banners.
 #[derive(Debug, Clone)]
@@ -55,12 +56,23 @@ impl OutputFormat {
     }
 }
 
+/// Encoded output, plus what the response needs to say about how it was drawn.
+pub struct Rendered {
+    pub bytes: Vec<u8>,
+    /// Faces used, in fallback order, for the `Font` response header. `None`
+    /// where the output draws no text.
+    pub font: Option<String>,
+}
+
 impl RenderContext {
     /// Main rendering pipeline: template -> SVG -> optional rasterization -> encoded bytes.
-    pub fn render(self) -> Result<Vec<u8>, RenderError> {
+    pub fn render(self) -> Result<Rendered, RenderError> {
         let format = self.output_format.clone();
-        let svg = self.render_svg()?;
-        format.encode(svg)
+        let drawn = self.render_svg()?;
+        Ok(Rendered {
+            bytes: format.encode(drawn.svg)?,
+            font: drawn.font,
+        })
     }
 }
 
@@ -74,8 +86,11 @@ pub fn generate_favicon_png_bytes(time: Timestamp, tz: TimeZone) -> Result<Vec<u
         now: time,
         format: None,
         locale: None,
+        font: None,
+        text_mode: TextMode::default(),
     }
     .render()
+    .map(|rendered| rendered.bytes)
 }
 
 /// Converts PNG bytes to ICO format using the ico crate.
@@ -126,9 +141,12 @@ mod tests {
             now,
             format: None,
             locale: None,
+            font: None,
+            text_mode: TextMode::default(),
         }
         .render()
-        .unwrap();
+        .unwrap()
+        .bytes;
 
         match format {
             OutputFormat::Svg => {

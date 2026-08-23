@@ -99,8 +99,11 @@ async fn route_returns_expected_status_and_content_type(
 }
 
 #[rstest]
-#[case::before_reference_now_renders_ago("/relative/0?now=1000000000", "ago")]
-#[case::after_reference_now_renders_from_now("/relative/2000000000?now=1000000000", "from now")]
+#[case::before_reference_now_renders_ago("/relative/0?now=1000000000&text=live", "ago")]
+#[case::after_reference_now_renders_from_now(
+    "/relative/2000000000?now=1000000000&text=live",
+    "from now"
+)]
 #[tokio::test]
 async fn now_override_shifts_relative_rendering(
     router: Router,
@@ -128,7 +131,7 @@ async fn date_now_header_shifts_relative_rendering(router: Router) {
     let response = router
         .oneshot(
             Request::builder()
-                .uri("/relative/2000000000")
+                .uri("/relative/2000000000?text=live")
                 .header("Date-Now", "1000000000")
                 .body(Body::empty())
                 .expect("valid request"),
@@ -167,9 +170,9 @@ async fn every_response_reports_the_resolved_timezone(router: Router, #[case] ur
 }
 
 #[rstest]
-#[case::iana("/absolute/1700000000?tz=America/Chicago")]
-#[case::tilde_substituted("/absolute/1700000000?tz=America~Chicago")]
-#[case::abbreviation("/absolute/1700000000?tz=CST")]
+#[case::iana("/absolute/1700000000?tz=America/Chicago&text=live")]
+#[case::tilde_substituted("/absolute/1700000000?tz=America~Chicago&text=live")]
+#[case::abbreviation("/absolute/1700000000?tz=CST&text=live")]
 #[tokio::test]
 async fn timezone_shifts_absolute_rendering(router: Router, #[case] uri: &str) {
     let response = get(router, uri).await;
@@ -189,7 +192,7 @@ async fn timezone_header_is_honored(router: Router) {
     let response = router
         .oneshot(
             Request::builder()
-                .uri("/absolute/1700000000")
+                .uri("/absolute/1700000000?text=live")
                 .header("Timezone", "Asia/Tokyo")
                 .body(Body::empty())
                 .expect("valid request"),
@@ -215,7 +218,7 @@ async fn malformed_timezone_is_bad_request(router: Router) {
 #[rstest]
 #[tokio::test]
 async fn format_query_overrides_the_default_absolute_pattern(router: Router) {
-    let response = get(router, "/absolute/1700000000?format=%25Y").await;
+    let response = get(router, "/absolute/1700000000?format=%25Y&text=live").await;
     check!(response.status() == StatusCode::OK);
     check!(body_text(response).await.contains(">2023<"));
 }
@@ -241,7 +244,7 @@ async fn relative_renders_in_the_negotiated_locale(router: Router) {
     let response = router
         .oneshot(
             Request::builder()
-                .uri("/relative/0?now=3600")
+                .uri("/relative/0?now=3600&text=live")
                 .header("Accept-Language", "fr")
                 .body(Body::empty())
                 .expect("valid request"),
@@ -350,4 +353,95 @@ async fn favicon_responses_are_never_cached(router: Router, #[case] uri: &str) {
 async fn favicon_and_index_default_to_geolocated_privacy(router: Router) {
     let response = get_as_client(router, "/favicon.ico").await;
     check!(header_value(&response, "cache-control").contains("private"));
+}
+
+#[rstest]
+#[case::absolute("/absolute/1700000000", "Roboto Mono")]
+#[case::relative("/relative/-3600", "Inter")]
+#[case::implicit("/1700000000", "Roboto Mono")]
+#[tokio::test]
+async fn text_responses_report_the_face_that_drew_them(
+    router: Router,
+    #[case] uri: &str,
+    #[case] expected: &str,
+) {
+    let response = get(router, uri).await;
+    check!(response.status() == StatusCode::OK);
+    check!(header_value(&response, "font") == expected);
+}
+
+#[rstest]
+#[case("inter", "Inter")]
+#[case("roboto-mono", "Roboto Mono")]
+#[case("arimo", "Arimo")]
+#[tokio::test]
+async fn font_query_selects_the_face(router: Router, #[case] value: &str, #[case] expected: &str) {
+    let response = get(router, &format!("/absolute/1700000000?font={value}")).await;
+    check!(response.status() == StatusCode::OK);
+    check!(header_value(&response, "font") == expected);
+}
+
+#[rstest]
+#[case("/absolute/1700000000?font=comic-sans")]
+#[case("/absolute/1700000000?text=paths")]
+#[tokio::test]
+async fn an_unknown_presentation_value_is_rejected(router: Router, #[case] uri: &str) {
+    let response = get(router, uri).await;
+    check!(response.status() == StatusCode::BAD_REQUEST);
+}
+
+/// The favicon is an analog clock with no text, so it names no face.
+#[rstest]
+#[tokio::test]
+async fn the_favicon_reports_no_face(router: Router) {
+    let response = get_as_client(router, "/favicon.png").await;
+    check!(response.status() == StatusCode::OK);
+    check!(response.headers().get("font") == None);
+}
+
+#[rstest]
+#[case::outline("outline", false)]
+#[case::embed("embed", true)]
+#[case::live("live", true)]
+#[tokio::test]
+async fn text_query_selects_how_glyphs_are_delivered(
+    router: Router,
+    #[case] mode: &str,
+    #[case] keeps_live_text: bool,
+) {
+    let response = get(router, &format!("/absolute/1700000000?text={mode}")).await;
+    check!(response.status() == StatusCode::OK);
+
+    let body = body_text(response).await;
+    check!(body.contains("<text") == keeps_live_text);
+    check!(body.contains("@font-face") == (mode == "embed"));
+}
+
+/// Served as `image/svg+xml`, so a caller who opens the URL directly renders
+/// it as a document. A `?format=` value carrying markup must not become part
+/// of that document.
+#[rstest]
+#[tokio::test]
+async fn a_format_string_cannot_inject_markup(router: Router) {
+    let response = get(
+        router,
+        "/absolute/1700000000?text=live&format=%3C%2Ftext%3E%3Cscript%3Ealert(1)%3C%2Fscript%3E",
+    )
+    .await;
+    check!(response.status() == StatusCode::OK);
+
+    let body = body_text(response).await;
+    check!(!body.contains("<script"));
+    check!(body.contains("&lt;script&gt;"));
+}
+
+/// No bundled face covers CJK, so the chain runs out and the glyphs are boxes.
+/// A caller looking at those boxes has no other way to tell that the face was
+/// missing the glyphs rather than the styling being wrong.
+#[rstest]
+#[tokio::test]
+async fn an_uncoverable_script_is_reported_as_partial_coverage(router: Router) {
+    let response = get(router, "/absolute/1700000000?format=%E4%BB%8A%E6%97%A5").await;
+    check!(response.status() == StatusCode::OK);
+    check!(header_value(&response, "font").ends_with("coverage=partial"));
 }
