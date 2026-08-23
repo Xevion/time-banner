@@ -153,12 +153,29 @@ Blocks styling, because text measurement is wrong until faces are real.
 
 ## Phase 9: caching and protocol
 
-- [ ] Display-value quantization per mode, with a next-change instant
-- [ ] `ETag` over the display value and render inputs
-- [ ] `max-age` from the next-change instant
-- [ ] `If-None-Match` and `If-Modified-Since`, with correct `304` headers
-- [ ] `immutable` for past absolute instants
-- [ ] `stale-while-revalidate` where staleness is cosmetic
+Pulled ahead of phases 5 through 8 for the part that the shipped modes need.
+Quantization is a per-mode property, so the contract is cheaper to establish
+against two modes and implement alongside each new one than to retrofit across
+seven. Everything below the first six items still follows the original order.
+
+- [x] Display-value quantization per mode, with a next-change instant
+      (`RenderContext::display_text` is the single definition of what gets
+      drawn; the boundary is found by bracketing and bisecting that function
+      rather than by restating each mode's rounding, in `server/cache.rs`)
+- [x] `ETag` over the display value and render inputs (strong, since renders
+      are byte-reproducible and tested to be; salted with the crate version and
+      the drawing face's checksum so a redeploy or font rebuild invalidates)
+- [x] `max-age` from the next-change instant, truncated toward zero so a badge
+      expires just before it becomes wrong rather than just after
+- [x] `If-None-Match` and `If-Modified-Since`, with correct `304` headers
+      (entity tag takes precedence; the `304` names no content type, since a
+      cache updates what it holds from those headers)
+- [x] `immutable` where the response does not depend on the wall clock: a
+      pinned `?now=`, or absolute output of a value that names an instant.
+      Past-versus-future was the wrong axis and section 9.2 now says so
+- [x] `stale-while-revalidate` where staleness is cosmetic
+- [x] `Vary` correctness: `Date-Now` added, since it is read and changes the
+      body; `Font` dropped, since it is only ever a response header
 - [ ] In-memory cache keyed on normalized inputs, weighted by render cost
 - [ ] Coalesced concurrent misses
 - [ ] Encoded variants derived from a cached pixmap

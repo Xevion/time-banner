@@ -212,6 +212,21 @@ fn parse_relative_value(
     apply_span(span, now, tz)
 }
 
+/// Whether a parsed value names an instant outright or is measured from the
+/// reference instant.
+///
+/// The difference decides whether a rendering of the value can be cached: a
+/// `Fixed` value resolves the same way forever, while a `ClockRelative` one
+/// resolves somewhere new on every request that doesn't pin `now`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Anchor {
+    /// The text named an instant: an epoch, a date, an ISO 8601 timestamp.
+    Fixed,
+    /// The text was measured from `now`: the `now` literal, or a signed
+    /// duration.
+    ClockRelative,
+}
+
 /// Parses a time value against the full grammar (section 3):
 ///
 /// - `"now"`: the reference instant
@@ -229,16 +244,36 @@ pub fn parse_time_value(
     now: Timestamp,
     tz: &TimeZone,
 ) -> Result<Timestamp, ParseError> {
+    parse_time_value_anchored(raw_time, now, tz).map(|(timestamp, _)| timestamp)
+}
+
+/// [`parse_time_value`], also reporting whether the value was measured from
+/// `now` rather than naming an instant.
+pub fn parse_time_value_anchored(
+    raw_time: &str,
+    now: Timestamp,
+    tz: &TimeZone,
+) -> Result<(Timestamp, Anchor), ParseError> {
     let trimmed = raw_time.trim();
 
     if trimmed == "now" {
-        return Ok(now);
+        return Ok((now, Anchor::ClockRelative));
     }
 
     if trimmed.starts_with('+') || trimmed.starts_with('-') {
-        return parse_relative_value(trimmed, now, tz);
+        return parse_relative_value(trimmed, now, tz).map(|t| (t, Anchor::ClockRelative));
     }
 
+    parse_fixed_value(trimmed, raw_time, tz).map(|t| (t, Anchor::Fixed))
+}
+
+/// The half of the grammar that names an instant outright, with no reference
+/// to `now`.
+fn parse_fixed_value(
+    trimmed: &str,
+    raw_time: &str,
+    tz: &TimeZone,
+) -> Result<Timestamp, ParseError> {
     if is_compact_date(trimmed) {
         return date_to_timestamp(parse_compact_date(trimmed)?, tz);
     }
@@ -292,6 +327,42 @@ mod tests {
     use assert2::check;
     use jiff::{Span, ToSpan};
     use rstest::rstest;
+
+    /// Whether a value moves with the clock decides whether a rendering of it
+    /// can be cached forever. Calling a moving value fixed would pin a stale
+    /// badge in every cache between here and the reader.
+    #[rstest]
+    #[case::epoch("1700000000", Anchor::Fixed)]
+    #[case::iso_instant("2027-01-01T00:00:00Z", Anchor::Fixed)]
+    #[case::iso_date("2027-01-01", Anchor::Fixed)]
+    #[case::compact_date("20270101", Anchor::Fixed)]
+    #[case::date_and_time("2027-01-01@14:30", Anchor::Fixed)]
+    #[case::now_literal("now", Anchor::ClockRelative)]
+    #[case::signed_seconds("+3600", Anchor::ClockRelative)]
+    #[case::negative_seconds("-3600", Anchor::ClockRelative)]
+    #[case::human_duration("+1y2d3h", Anchor::ClockRelative)]
+    #[case::iso_duration("-P1Y2D", Anchor::ClockRelative)]
+    #[case::padded("  now  ", Anchor::ClockRelative)]
+    fn anchor_reports_whether_the_value_moves(#[case] raw: &str, #[case] expected: Anchor) {
+        let now = Timestamp::from_second(1_700_000_000).unwrap();
+        let (_, anchor) =
+            parse_time_value_anchored(raw, now, &TimeZone::UTC).expect("value parses");
+        check!(anchor == expected);
+    }
+
+    /// A clock-relative value has to actually follow the reference instant,
+    /// and a fixed one has to actually ignore it. This is the property the
+    /// freshness search leans on when it re-parses at a probe instant.
+    #[rstest]
+    #[case::fixed("1700000000", false)]
+    #[case::relative("+3600", true)]
+    fn a_clock_relative_value_follows_the_reference(#[case] raw: &str, #[case] moves: bool) {
+        let now = Timestamp::from_second(1_700_000_000).unwrap();
+        let later = Timestamp::from_second(1_700_086_400).unwrap();
+        let at_now = parse_time_value(raw, now, &TimeZone::UTC).unwrap();
+        let at_later = parse_time_value(raw, later, &TimeZone::UTC).unwrap();
+        check!((at_now != at_later) == moves);
+    }
 
     use super::*;
 

@@ -4,7 +4,7 @@
 use assert2::{assert, check};
 use axum::Router;
 use axum::body::Body;
-use axum::http::{Request, StatusCode, header};
+use axum::http::{HeaderValue, Request, Response, StatusCode, header};
 use http_body_util::BodyExt;
 use rstest::{fixture, rstest};
 use tower::ServiceExt;
@@ -444,4 +444,242 @@ async fn an_uncoverable_script_is_reported_as_partial_coverage(router: Router) {
     let response = get(router, "/absolute/1700000000?format=%E4%BB%8A%E6%97%A5").await;
     check!(response.status() == StatusCode::OK);
     check!(header_value(&response, "font").ends_with("coverage=partial"));
+}
+
+/// A request carrying whatever headers a conditional request needs.
+async fn get_with(router: Router, uri: &str, headers: &[(&str, &str)]) -> Response<Body> {
+    let mut request = Request::builder().uri(uri);
+    for (name, value) in headers {
+        request = request.header(*name, *value);
+    }
+    router
+        .oneshot(request.body(Body::empty()).expect("valid request"))
+        .await
+        .expect("router is infallible")
+}
+
+/// A strong `ETag` promises the bytes are reproducible. If a render ever stops
+/// being, the validator has to weaken rather than the promise quietly breaking.
+#[rstest]
+#[case::svg("/absolute/1700000000")]
+#[case::png("/absolute/1700000000.png")]
+#[case::relative("/relative/1700000000?now=1700003600")]
+#[tokio::test]
+async fn a_render_is_byte_reproducible(router: Router, #[case] uri: &str) {
+    let first = get(router.clone(), uri).await;
+    let tag = header_value(&first, "etag").to_string();
+    check!(
+        !tag.starts_with("W/"),
+        "a weak tag would be honest, but then the strong one below is wrong"
+    );
+
+    let second = get(router, uri).await;
+    check!(header_value(&second, "etag") == tag);
+    check!(body_of(first).await == body_of(second).await);
+}
+
+/// An instant that names itself reads the same forever, so there is nothing
+/// for a cache to revalidate.
+#[rstest]
+#[case::absolute("/absolute/1700000000")]
+#[case::implicit("/1700000000")]
+#[case::iso("/2023-11-14T22:13:20Z")]
+#[tokio::test]
+async fn a_fixed_instant_is_immutable(router: Router, #[case] uri: &str) {
+    let response = get(router, uri).await;
+    check!(response.status() == StatusCode::OK);
+    check!(header_value(&response, "cache-control").contains("immutable"));
+}
+
+/// Reads the `max-age` out of a `Cache-Control` value.
+fn max_age(response: &Response<Body>) -> i64 {
+    header_value(response, "cache-control")
+        .split("max-age=")
+        .nth(1)
+        .and_then(|rest| rest.split([',', ' ']).next())
+        .and_then(|value| value.parse().ok())
+        .expect("a max-age is present")
+}
+
+/// A badge whose words move with the clock goes stale on a schedule, so it
+/// must not claim otherwise.
+#[rstest]
+#[case::aging_in_real_time("/relative/1700000000")]
+#[case::the_clock_itself("/absolute/now")]
+#[tokio::test]
+async fn a_moving_badge_expires(router: Router, #[case] uri: &str) {
+    let response = get(router, uri).await;
+    let directive = header_value(&response, "cache-control").to_string();
+    check!(!directive.contains("immutable"));
+    check!(directive.contains("stale-while-revalidate"));
+    check!(max_age(&response) >= 1);
+}
+
+/// `/absolute/now` redraws its own seconds field, so it is only good until the
+/// next one. A badge that changes this fast should say so rather than round up
+/// into a minute of being wrong.
+#[rstest]
+#[tokio::test]
+async fn a_second_resolution_badge_expires_in_a_second(router: Router) {
+    let response = get(router, "/absolute/now").await;
+    check!(max_age(&response) == 1);
+}
+
+/// A value written relative to the request instant renders the same words on
+/// every request, forever. Discovering that is the search doing its job, not
+/// missing a change: there is genuinely nothing to revalidate for.
+#[rstest]
+#[tokio::test]
+async fn a_badge_anchored_to_the_request_never_moves(router: Router) {
+    let response = get(router, "/relative/-3600").await;
+    check!(max_age(&response) == 31_536_000);
+    check!(!header_value(&response, "cache-control").contains("immutable"));
+}
+
+/// Pinning the reference instant makes the whole response a function of the
+/// URL, whatever the value grammar did.
+#[rstest]
+#[tokio::test]
+async fn a_pinned_reference_instant_is_immutable(router: Router) {
+    let response = get(router, "/relative/+3600?now=1700000000").await;
+    check!(header_value(&response, "cache-control").contains("immutable"));
+}
+
+/// The whole point of the entity tag: a client that already holds the bytes
+/// gets told so instead of being sent them again.
+#[rstest]
+#[case::relative("/relative/-3600")]
+#[case::absolute("/absolute/1700000000")]
+#[case::png("/absolute/1700000000.png")]
+#[tokio::test]
+async fn a_held_entity_is_answered_with_304(router: Router, #[case] uri: &str) {
+    let first = get(router.clone(), uri).await;
+    let tag = header_value(&first, "etag").to_string();
+    let directive = header_value(&first, "cache-control").to_string();
+
+    let second = get_with(router, uri, &[("If-None-Match", &tag)]).await;
+    check!(second.status() == StatusCode::NOT_MODIFIED);
+    check!(header_value(&second, "etag") == tag);
+    check!(header_value(&second, "cache-control") == directive);
+    check!(header_value(&second, "vary").len() > 0);
+    check!(body_of(second).await == Vec::<u8>::new());
+}
+
+#[rstest]
+#[tokio::test]
+async fn a_stale_entity_is_answered_with_the_bytes(router: Router) {
+    let response = get_with(
+        router,
+        "/relative/-3600",
+        &[("If-None-Match", "\"something-else\"")],
+    )
+    .await;
+    check!(response.status() == StatusCode::OK);
+    check!(!body_of(response).await.is_empty());
+}
+
+/// Two renders that draw the same words are the same representation, however
+/// far apart the requests were. This is what lets a badge revalidate rather
+/// than re-download for the whole hour it reads the same.
+#[rstest]
+#[tokio::test]
+async fn the_tag_follows_the_words_not_the_clock(router: Router) {
+    let early = get(router.clone(), "/relative/0?now=7200").await;
+    let late = get(router.clone(), "/relative/0?now=7300").await;
+    let different = get(router, "/relative/0?now=90000").await;
+
+    check!(header_value(&early, "etag") == header_value(&late, "etag"));
+    check!(header_value(&early, "etag") != header_value(&different, "etag"));
+}
+
+/// Different bytes must never share a tag, or a cache will serve one
+/// representation where another was asked for.
+#[rstest]
+#[case::format("/absolute/1700000000.png")]
+#[case::text_mode("/absolute/1700000000?text=live")]
+#[case::font("/absolute/1700000000?font=inter")]
+#[tokio::test]
+async fn a_different_representation_gets_a_different_tag(router: Router, #[case] uri: &str) {
+    let base = get(router.clone(), "/absolute/1700000000").await;
+    let other = get(router, uri).await;
+    check!(header_value(&base, "etag") != header_value(&other, "etag"));
+}
+
+/// `Date-Now` changes what gets drawn, so a shared cache has to key on it.
+/// `Font` is only ever a response header, so listing it would fragment caches
+/// on a request header nothing reads.
+#[rstest]
+#[tokio::test]
+async fn vary_names_the_request_headers_that_matter(router: Router) {
+    let response = get(router, "/relative/-3600").await;
+    let vary = response
+        .headers()
+        .get_all("vary")
+        .iter()
+        .map(|value| value.to_str().expect("header is ASCII").to_lowercase())
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    check!(vary.contains("date-now"));
+    check!(vary.contains("timezone"));
+    check!(vary.contains("accept-language"));
+    check!(!vary.contains("font"));
+}
+
+/// Geolocation still forbids shared caching, and now says how long the answer
+/// is good for as well.
+#[rstest]
+#[tokio::test]
+async fn a_geolocated_response_stays_private_and_still_expires(router: Router) {
+    let response = get_with(
+        router,
+        "/relative/-3600?tz=auto",
+        &[("X-Real-IP", "127.0.0.1")],
+    )
+    .await;
+    let directive = header_value(&response, "cache-control");
+    check!(directive.contains("private"));
+    check!(directive.contains("max-age="));
+}
+
+/// Echoing our own `Last-Modified` back has to be recognized, or the header is
+/// decoration.
+#[rstest]
+#[tokio::test]
+async fn a_returned_last_modified_is_honored(router: Router) {
+    let first = get(router.clone(), "/relative/1700000000").await;
+    let modified = header_value(&first, "last-modified").to_string();
+
+    let second = get_with(
+        router,
+        "/relative/1700000000",
+        &[("If-Modified-Since", &modified)],
+    )
+    .await;
+    check!(second.status() == StatusCode::NOT_MODIFIED);
+}
+
+/// A cache updates its stored response with whatever headers a `304` carries,
+/// so a placeholder content type here would overwrite the real one it holds
+/// and hand the reader an octet stream where an image was cached.
+#[rstest]
+#[tokio::test]
+async fn a_304_describes_no_body_of_its_own(router: Router) {
+    let first = get(router.clone(), "/absolute/1700000000.png").await;
+    let tag = header_value(&first, "etag").to_string();
+
+    let second = get_with(
+        router,
+        "/absolute/1700000000.png",
+        &[("If-None-Match", &tag)],
+    )
+    .await;
+    check!(second.status() == StatusCode::NOT_MODIFIED);
+    check!(second.headers().get(header::CONTENT_TYPE) == None);
+
+    // axum stamps this from the empty body's size hint, in a wrapper that sits
+    // outside anything a router layer can reach. RFC 9110 permits it on a
+    // `304` only when it matches what a `200` would have sent, so this pins
+    // the deviation rather than endorsing it.
+    check!(second.headers().get(header::CONTENT_LENGTH) == Some(&HeaderValue::from_static("0")));
 }

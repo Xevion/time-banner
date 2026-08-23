@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 use jiff::{Timestamp, tz::TimeZone};
 use serde::Serialize;
 use tera::{Context, Tera};
-use timeago::{BoxedLanguage, Formatter};
+use timeago::Formatter;
 
 use crate::error::RenderError;
 use crate::font::{self, Family, Shaped};
@@ -56,6 +56,7 @@ impl OutputForm {
 }
 
 /// Context passed to template renderer containing all necessary data.
+#[derive(Clone)]
 pub struct RenderContext {
     pub value: Timestamp,
     pub output_form: OutputForm,
@@ -67,9 +68,13 @@ pub struct RenderContext {
     /// `strftime` pattern for absolute output. `None` draws with
     /// `ABSOLUTE_FORMAT`.
     pub format: Option<String>,
-    /// Translation relative output renders words in. `None` draws in
-    /// English.
-    pub locale: Option<BoxedLanguage>,
+    /// ISO 639-1 code relative output renders words in. `None`, and any code
+    /// with no bundled translation, draws in English.
+    ///
+    /// Held as a code rather than a resolved `BoxedLanguage` so that the
+    /// context stays cloneable, which is what lets the caching layer ask what
+    /// this request would draw at some other instant.
+    pub locale: Option<String>,
     /// Face to draw in. `None` takes the mode's default.
     pub font: Option<Family>,
     /// How SVG output carries its text.
@@ -164,37 +169,58 @@ const ABSOLUTE_FORMAT: &str = "%Y-%m-%d %H:%M:%S %Z";
 const MAX_FORMAT_OUTPUT_BYTES: usize = 512;
 
 impl RenderContext {
+    /// The face this context draws in, with the mode's default standing in
+    /// for an absent `?font=`.
+    pub fn family(&self) -> Family {
+        self.font
+            .unwrap_or_else(|| self.output_form.default_family())
+    }
+
+    /// The exact string this context draws, or `None` for output that draws
+    /// no text.
+    ///
+    /// This is the display value caching quantizes on, so it has to be the
+    /// same string `render_svg` puts on the canvas rather than an
+    /// approximation of it. Two requests agreeing here render the same bytes.
+    pub fn display_text(&self) -> Result<Option<String>, RenderError> {
+        match self.output_form {
+            OutputForm::Relative => {
+                let elapsed = self.value.duration_since(self.now).unsigned_abs();
+                let lang = self
+                    .locale
+                    .as_deref()
+                    .and_then(locale::language_for)
+                    .unwrap_or_else(locale::default_language);
+                let mut formatter = Formatter::with_language(lang);
+                if self.value > self.now {
+                    formatter.ago("from now");
+                }
+                Ok(Some(formatter.convert(elapsed)))
+            }
+            OutputForm::Absolute => {
+                let zoned = self.value.to_zoned(self.tz.clone());
+                let pattern = self.format.as_deref().unwrap_or(ABSOLUTE_FORMAT);
+                format_absolute(&zoned, pattern, MAX_FORMAT_OUTPUT_BYTES).map(Some)
+            }
+            OutputForm::Clock => Ok(None),
+        }
+    }
+
     /// Renders this time value using the appropriate template.
     ///
     /// Uses different templates based on output form:
     /// - Relative/Absolute: "basic.svg" with text content
     /// - Clock: "clock.svg" with calculated hand positions
     pub fn render_svg(self) -> Result<Drawn, RenderError> {
-        let family = self
-            .font
-            .unwrap_or_else(|| self.output_form.default_family());
+        let family = self.family();
         let text_mode = self.text_mode;
 
-        let (svg, shaped) = match self.output_form {
-            OutputForm::Relative => {
-                let elapsed = self.value.duration_since(self.now).unsigned_abs();
-                let lang = self.locale.unwrap_or_else(locale::default_language);
-                let mut formatter = Formatter::with_language(lang);
-                if self.value > self.now {
-                    formatter.ago("from now");
-                }
-                let text = formatter.convert(elapsed);
+        let (svg, shaped) = match self.display_text()? {
+            Some(text) => {
                 let (svg, shaped) = render_basic(&text, family, text_mode)?;
                 (svg, Some(shaped))
             }
-            OutputForm::Absolute => {
-                let zoned = self.value.to_zoned(self.tz.clone());
-                let pattern = self.format.as_deref().unwrap_or(ABSOLUTE_FORMAT);
-                let text = format_absolute(&zoned, pattern, MAX_FORMAT_OUTPUT_BYTES)?;
-                let (svg, shaped) = render_basic(&text, family, text_mode)?;
-                (svg, Some(shaped))
-            }
-            OutputForm::Clock => {
+            None => {
                 let (hour, minute) = calculate_clock_hands(self.value, &self.tz);
 
                 let mut template_context = Context::new();
@@ -433,7 +459,7 @@ mod tests {
             tz: TimeZone::UTC,
             now,
             format: None,
-            locale: crate::locale::language_for("fr"),
+            locale: Some("fr".to_string()),
             font: None,
             text_mode: TextMode::Live,
         }

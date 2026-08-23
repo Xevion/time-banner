@@ -372,24 +372,55 @@ wrong rather than at an arbitrary interval.
 
 ### 9.2 Per-mode freshness
 
+What decides freshness is not whether an instant is past or future but whether
+the response depends on the wall clock at all. Two things sever that dependence,
+and either one alone is enough:
+
+- The reference instant was pinned, by `?now=` or `Date-Now`. Every input is
+  then supplied by the request, so the response is a function of the URL.
+- The value names an instant outright (section 3) rather than being measured
+  from `now`, and the mode draws that instant rather than the distance to it.
+
 | Mode                               | Cache-Control                                            |
 | ---------------------------------- | -------------------------------------------------------- |
-| `absolute`, past instant           | `public, max-age=31536000, immutable`                    |
-| `absolute`, future instant         | `public, max-age=` until it becomes past                 |
+| any, reference instant pinned      | `public, max-age=31536000, immutable`                    |
+| `absolute`, value names an instant | `public, max-age=31536000, immutable`                    |
+| `absolute`, value measured from `now` | `public, max-age=` until the drawn text changes       |
 | `relative`, `elapsed`, `countdown` | `public, max-age=` until the display value changes       |
 | `progress`                         | `public, max-age=` until the rendered percentage changes |
 | `timer`                            | `public, max-age=` until the next occurrence changes     |
 | `uptime`                           | `no-store`                                               |
 | favicon (`/favicon.ico`, `.png`)   | `no-store`                                               |
 | any, animated                      | section 10                                               |
-| any, geolocated                    | `private` prefix                                         |
+| any, geolocated                    | `private` appended                                       |
+
+A value measured from `now` can still draw the same thing forever: `/relative/`
+of `-3600` reads "1 hour ago" on every request, because the value and the
+reference instant advance together. Such a response is reported as fresh for a
+year rather than as `immutable`, since that is a conclusion drawn from probing
+a bounded horizon rather than from the request's own structure.
+
+The next-change instant is found by search rather than derived from each mode's
+rounding rules: the display value is evaluated at probe instants until the
+first one that differs is bracketed and bisected. This holds for any mode whose
+display value settles and then moves on without returning to what it read
+before, which is every mode here, and it keeps a mode's freshness honest
+without restating its rounding a second time. Where the assumption cannot hold,
+the search brackets at one second, which under-claims freshness rather than
+over-claiming it.
 
 Validators are strong when the response bytes are deterministic for the ETag
 inputs, and weak (`W/`) when they are not, which is the case for formats whose
-encoders are not byte-reproducible.
+encoders are not byte-reproducible. The tag also folds in the running version
+and the checksum of the face that drew the text, so a redeploy or a rebuilt
+font bundle invalidates rather than serving old bytes under a tag that still
+matches.
 
-`If-None-Match` and `If-Modified-Since` are both honored. `304` responses carry
-the same `Vary`, `Cache-Control`, and `ETag` headers as the `200` would have.
+`If-None-Match` and `If-Modified-Since` are both honored, the former taking
+precedence where a request carries both. `304` responses carry the same `Vary`,
+`Cache-Control`, `ETag`, and `Last-Modified` headers as the `200` would have,
+and describe no content type of their own: a cache updates what it holds from
+these, so naming a type there would overwrite the real one.
 
 `stale-while-revalidate` is emitted for modes whose staleness is cosmetic rather
 than wrong, which is every mode except `countdown` near zero.
@@ -579,7 +610,6 @@ Response headers.
 | `ETag`             | section 9.1                                        |
 | `Last-Modified`    | display value's start instant                      |
 | `Vary`             | every negotiated input that affected this response |
-| `Date`             | reference instant used                             |
 | `Timezone`         | resolved IANA identifier                           |
 | `Font`             | faces used, in fallback order                      |
 | `Accept-CH`        | client hints the service will use                  |
@@ -587,6 +617,12 @@ Response headers.
 | `RateLimit`        | remaining budget                                   |
 | `Server-Timing`    | per-phase render timings                           |
 | `Retry-After`      | on `429` and `503`                                 |
+
+`Date` keeps its HTTP meaning of when the response was generated, and is left to
+the server. It is what every cache subtracts from to compute a response's age,
+so restating a client-supplied `?now=` there would make a banner pinned to a
+past instant arrive already stale. A reference instant that needs echoing back
+belongs in a header of its own.
 
 `Server-Timing` reports `parse`, `render`, `raster`, `encode`, and a `cache`
 entry describing hit or miss. It is genuinely useful for a service whose whole

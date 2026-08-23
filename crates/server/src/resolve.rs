@@ -42,6 +42,10 @@ pub struct Resolution {
     /// the client address this way carry `Cache-Control: private`, per
     /// SPEC.md section 6.2.
     pub used_geolocation: bool,
+    /// Whether `now` came from `?now=` or `Date-Now` rather than the wall
+    /// clock. A pinned reference instant makes the whole response a function
+    /// of the request alone, so it never goes stale.
+    pub now_pinned: bool,
     /// Face to draw in. `None` leaves the choice to the mode's default.
     pub font: Option<Family>,
     /// How SVG output carries its text.
@@ -99,9 +103,9 @@ impl Resolution {
         };
 
         let wall_clock = Timestamp::now();
-        let now = match param_or_header("now", "date-now") {
-            Some(raw) => parse_time_value(raw, wall_clock, &tz)?,
-            None => wall_clock,
+        let (now, now_pinned) = match param_or_header("now", "date-now") {
+            Some(raw) => (parse_time_value(raw, wall_clock, &tz)?, true),
+            None => (wall_clock, false),
         };
 
         let font = params
@@ -139,6 +143,7 @@ impl Resolution {
             format,
             locale,
             used_geolocation,
+            now_pinned,
             font,
             text_mode,
         })
@@ -172,9 +177,15 @@ pub async fn resolve_request(
     if let Ok(value) = HeaderValue::from_str(&label) {
         response.headers_mut().insert("timezone", value);
     }
+    // Both are request headers this middleware reads, and both change what
+    // gets drawn, so a shared cache has to key on them or it will hand one
+    // caller's zone or reference instant to the next.
     response
         .headers_mut()
         .append(header::VARY, HeaderValue::from_static("Timezone"));
+    response
+        .headers_mut()
+        .append(header::VARY, HeaderValue::from_static("Date-Now"));
 
     // Appended, not `insert`ed, so a handler's own `Cache-Control` survives.
     if used_geolocation {

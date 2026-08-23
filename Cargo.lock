@@ -2262,6 +2262,7 @@ dependencies = [
  "memmap2",
  "rstest",
  "serde",
+ "sha2",
  "thiserror",
  "time-banner-core",
  "time-banner-render",

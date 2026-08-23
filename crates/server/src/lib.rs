@@ -14,6 +14,7 @@ use crate::routes::{
     index_handler, relative_handler,
 };
 
+pub mod cache;
 pub mod client_ip;
 pub mod config;
 pub mod error;
