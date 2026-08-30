@@ -93,6 +93,6 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: taiki-e/install-action@cargo-audit
-      - name: Security audit
-        run: cargo audit
+        with:
+          fetch-depth: 0 # the baseline is scanned from a worktree
+      - uses: Xevion/advisory-action@v1
